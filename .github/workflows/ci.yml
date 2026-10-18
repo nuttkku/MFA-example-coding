@@ -65,6 +65,15 @@ jobs:
         run: |
           docker run --rm -v "${{ github.workspace }}:/repo" zricethezav/gitleaks:latest             detect --source /repo --no-banner --redact
 
+  skills-sync:
+    name: skills/ and .claude/skills/ are in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # skills/ is the human-facing copy, .claude/skills/ is what Claude Code
+      # loads automatically after a clone - they must never drift apart.
+      - run: diff -r -x README.md skills .claude/skills
+
   build:
     name: Build Docker images
     runs-on: ubuntu-latest
