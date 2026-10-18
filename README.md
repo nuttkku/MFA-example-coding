@@ -30,7 +30,7 @@ Facebook / LINE / Keycloak / OpenID Connect ทั่วไป — เขีย�
 - [ข้อจำกัดที่ตั้งใจไว้](#-ข้อจำกัดที่ตั้งใจไว้)
 - [แนวทางต่อยอด](#-แนวทางต่อยอด)
 - [วิธีนำ repo และ skills ไปใช้ต่อ](#-วิธีนำ-repo-และ-skills-ไปใช้ต่อ)
-- [Credits](#-credits)
+- [Credits](#-credits) · [รายงานช่องโหว่ (SECURITY.md)](SECURITY.md)
 
 ## 🛠 เทคโนโลยีที่ใช้
 
@@ -146,6 +146,7 @@ docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d --buil
 docker compose logs -f backend    # ดู log ของ API
 docker compose down               # หยุดทุก service (เก็บข้อมูลใน DB ไว้)
 docker compose down -v            # หยุด + ล้างฐานข้อมูลทั้งหมด (รอบต่อไปจะ seed admin/test user ใหม่)
+(cd backend && npm ci && npm test) # unit test (ไม่ต้องมีฐานข้อมูล/Docker)
 bash scripts/smoke-test.sh        # ทดสอบ flow หลักทั้งหมดแบบอัตโนมัติ (ต้องมีสแตกรันอยู่ก่อน)
 (cd e2e && npm ci && npx playwright install chromium && node ui-test.mjs)  # ทดสอบผ่านหน้าเว็บจริง (ใช้ DB ใหม่)
 ```
@@ -736,8 +737,7 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
   จนล็อก SSO ของเหยื่อไปด้วย) ดูเหตุผลเต็มใน [CLAUDE.md](CLAUDE.md)
 - Frontend เป็น Vite dev server ตรง ๆ (ไม่ได้ build เป็น static + nginx) — เหมาะกับการรันเพื่อเรียนรู้/
   พัฒนา ถ้าจะ deploy จริงควร `vite build` แล้ว serve ผ่าน web server ที่เหมาะสม
-- CI ไม่ได้ทดสอบ Keycloak variant แบบ automated (ต้อง mock ฟอร์ม login ของ Keycloak) — ทดสอบมือแบบ
-  end-to-end ไปแล้วตอนพัฒนา ดู [CI-CD.md](CI-CD.md)
+- CI ทดสอบ SSO อัตโนมัติเฉพาะ Keycloak (job `keycloak-test`) — Facebook/LINE ต้องใช้บัญชีจริงของ provider จึงทดสอบมือเท่านั้น
 
 ## 🌱 แนวทางต่อยอด
 
@@ -749,8 +749,6 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
 - ทำ `vite build` + nginx multi-stage Dockerfile สำหรับ production
 - เพิ่ม Google/Microsoft/GitHub ผ่าน config `OIDC_*` เดิม (ไม่ต้องเขียนโค้ดใหม่ แค่ใส่ issuer/client id
   ของ provider นั้น)
-- เพิ่ม automated smoke test สำหรับ Keycloak variant ด้วย headless browser (Playwright) ให้ CI ครอบคลุม
-  ทั้ง 2 docker-compose variant
 - บังคับ step-up (ใส่โค้ด TOTP อีกครั้ง) ก่อนเปลี่ยนรหัสผ่านด้วย (ตอนนี้บังคับแล้วเฉพาะ regenerate backup codes และการเพิ่ม passkey)
 - เพิ่ม Dependabot ต่อจาก pipeline ที่มีอยู่ใน [CI-CD.md](CI-CD.md) (container image scanning ด้วย
   Trivy มีอยู่แล้ว)
@@ -790,7 +788,7 @@ docker run --rm --network container:<ชื่อ frontend container> -e BASE_UR
 
 ### ใช้เฉพาะบางส่วนผ่าน Skills
 
-> 🗺 ภาพรวมทุก feature ที่หยิบไปใช้ได้ (ขั้นตอน, กติกาที่ห้ามพลาด, ไฟล์ที่ต้องดู, skill ที่ตรงกัน) อยู่ที่ [docs/features-canvas.html](docs/features-canvas.html) — เปิดไฟล์นี้ในเบราว์เซอร์ได้เลย ไม่ต้อง build
+> 🗺 ภาพรวมทุก feature ที่หยิบไปใช้ได้ (ขั้นตอน, กติกาที่ห้ามพลาด, ไฟล์ที่ต้องดู, skill ที่ตรงกัน) อยู่ที่ [docs/features-canvas.html](docs/features-canvas.html) — เปิดออนไลน์ได้ที่ <https://nuttkku.github.io/MFA-example-coding/> หรือเปิดไฟล์ในเครื่องก็ได้ ไม่ต้อง build
 
 ตัวอย่างแต่ละส่วนถูกสกัดเป็น Claude Code skill ที่ [skills/](skills/README.md) — แต่ละโฟลเดอร์มี `SKILL.md`
 (กฎการออกแบบ + จุดที่เคยพลาดจริง) และ `reference/` (ไฟล์ source จริงให้ copy ไปปรับ):
@@ -807,7 +805,7 @@ docker run --rm --network container:<ชื่อ frontend container> -e BASE_UR
 | `svelte5-spa-auth-frontend` | Svelte 5 + Vite 8, guard, หน้า 2FA |
 | `docker-compose-dev-stack` | Postgres + Express + Vite + Keycloak ด้วย compose |
 
-ติดตั้ง skill ให้ Claude Code:
+clone repo นี้แล้วเปิด Claude Code ในโฟลเดอร์ ทุก skill ใช้ได้ทันที (มีสำเนาอยู่ใน `.claude/skills/`) ถ้าจะใช้ในโปรเจกต์อื่น:
 
 ```bash
 cp -r skills/forced-totp-2fa ~/.claude/skills/                 # ส่วนตัว (ทุกโปรเจกต์)

@@ -20,7 +20,11 @@ function redirectToLoginError(res, reason) {
 // those characters - stripping CR/LF stops forged extra log lines (log
 // injection), and the length cap stops log/audit-table flooding.
 function sanitizeProviderError(value) {
-  return String(value).replace(/[^\w.-]/g, '').slice(0, 64) || 'unknown';
+  return (
+    String(value)
+      .replace(/[^\w.-]/g, '')
+      .slice(0, 64) || 'unknown'
+  );
 }
 
 export const getProviders = asyncHandler(async (req, res) => {
@@ -82,7 +86,12 @@ export const handleCallback = asyncHandler(async (req, res) => {
     return redirectToLoginError(res, 'sso_denied');
   }
 
-  await recordEvent({ userId: user.id, eventType: 'sso_login_success', ipAddress: req.ip, metadata: { provider: provider.id } });
+  await recordEvent({
+    userId: user.id,
+    eventType: 'sso_login_success',
+    ipAddress: req.ip,
+    metadata: { provider: provider.id },
+  });
 
   // From here on this is exactly the same fork every password login goes
   // through - an external identity provider vouching for who the user is

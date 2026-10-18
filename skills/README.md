@@ -17,6 +17,11 @@ Each folder is a self-contained Claude Code skill: `SKILL.md` (frontmatter + the
 
 ## Installing a skill
 
+**Already active in this repo:** the same folders are mirrored in `.claude/skills/`, so Claude Code picks them up
+automatically when you open a clone of this repository (CI fails if the two copies drift apart).
+
+To use a skill in another project:
+
 Copy the folder into `~/.claude/skills/` (personal, all projects) or `<project>/.claude/skills/` (one project):
 
 ```bash

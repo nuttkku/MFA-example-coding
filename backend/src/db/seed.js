@@ -19,7 +19,9 @@ export async function seedAdmin() {
     [env.ADMIN_EMAIL.toLowerCase(), env.ADMIN_FULL_NAME, passwordHash],
   );
 
-  logger.info(`Bootstrap admin account ready: ${env.ADMIN_EMAIL} (2FA setup + password change required on first login)`);
+  logger.info(
+    `Bootstrap admin account ready: ${env.ADMIN_EMAIL} (2FA setup + password change required on first login)`,
+  );
 }
 
 // Convenience seed so there's a ready-made plain "user" role account for

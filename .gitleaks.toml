@@ -12,4 +12,5 @@ targetRules = ["generic-api-key"]
 paths = [
   '''scripts/smoke-test\.sh''',
   '''skills/security-scanning-ci/reference/smoke-test\.sh''',
+  '''\.claude/skills/security-scanning-ci/reference/smoke-test\.sh''',
 ]

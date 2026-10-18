@@ -45,6 +45,31 @@ jobs:
               --error \
               /src
 
+  quality:
+    name: Lint, format check and unit tests (${{ matrix.workspace }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.workspace }}/package-lock.json
+      - run: npm ci
+        working-directory: ${{ matrix.workspace }}
+      - run: npm run lint
+        working-directory: ${{ matrix.workspace }}
+      - name: Prettier (JS files only - see .prettierignore)
+        run: npx --yes prettier@3.9.10 --check .
+      - name: Unit tests (no database needed)
+        if: matrix.workspace == 'backend'
+        run: npm test
+        working-directory: backend
+
   osv-scan:
     name: OSV-Scanner (dependencies)
     runs-on: ubuntu-latest
@@ -64,6 +89,15 @@ jobs:
       - name: Run Gitleaks
         run: |
           docker run --rm -v "${{ github.workspace }}:/repo" zricethezav/gitleaks:latest             detect --source /repo --no-banner --redact
+
+  skills-sync:
+    name: skills/ and .claude/skills/ are in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # skills/ is the human-facing copy, .claude/skills/ is what Claude Code
+      # loads automatically after a clone - they must never drift apart.
+      - run: diff -r -x README.md skills .claude/skills
 
   build:
     name: Build Docker images
@@ -191,3 +225,55 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  keycloak-test:
+    name: SSO browser test with Keycloak (Playwright)
+    runs-on: ubuntu-latest
+    needs: [build]
+    env:
+      COMPOSE_FILES: -f docker-compose.yml -f docker-compose.keycloak.yml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Generate throwaway secrets for this run
+        run: bash scripts/generate-secrets.sh
+
+      - name: Start stack with the Keycloak addon
+        run: docker compose $COMPOSE_FILES up -d --build
+
+      - name: Install Playwright + Chromium
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      # Keycloak needs longer than the app to import its realm and turn healthy;
+      # the backend only starts once it is (depends_on: service_healthy).
+      - name: Wait for backend health and the Keycloak provider
+        run: |
+          for i in $(seq 1 120); do
+            if curl -sf http://localhost:5173/api/auth/sso/providers | grep -q keycloak; then
+              echo "stack is up with Keycloak enabled"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "stack did not become healthy in time" >&2
+          exit 1
+
+      - name: Run Keycloak SSO tests
+        working-directory: e2e
+        run: node keycloak-test.mjs
+
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose $COMPOSE_FILES logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose $COMPOSE_FILES down -v
