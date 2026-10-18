@@ -29,6 +29,7 @@ Facebook / LINE / Keycloak / OpenID Connect ทั่วไป — เขีย�
 - [ความปลอดภัย: สแกนและ CI/CD](#-ความปลอดภัย-สแกนและ-cicd)
 - [ข้อจำกัดที่ตั้งใจไว้](#-ข้อจำกัดที่ตั้งใจไว้)
 - [แนวทางต่อยอด](#-แนวทางต่อยอด)
+- [วิธีนำ repo และ skills ไปใช้ต่อ](#-วิธีนำ-repo-และ-skills-ไปใช้ต่อ)
 - [Credits](#-credits)
 
 ## 🛠 เทคโนโลยีที่ใช้
@@ -559,6 +560,18 @@ revoke (mark ในตาราง `refresh_tokens`) แล้วออกตั
 **เปลี่ยนรหัสผ่านแล้ว session อื่นทั้งหมดของบัญชีนั้นถูก revoke** (refresh token ทุกเครื่อง) แล้วออก session
 ใหม่ให้เครื่องที่เปลี่ยนรหัสเท่านั้น
 
+### CSRF protection
+
+Cookie ทุกตัวเป็น `SameSite=Lax` อยู่แล้ว แต่ยังมีชั้นเสริมสำหรับ request ที่เปลี่ยนสถานะ (POST/PATCH/DELETE):
+**double-submit token** ด้วย [csrf-csrf](https://github.com/Psifi-Solutions/csrf-csrf) + ตรวจ `Origin` ต้องตรงกับ
+`FRONTEND_ORIGIN` ([csrf.middleware.js](backend/src/middleware/csrf.middleware.js))
+
+- Frontend ขอ token จาก `GET /api/csrf-token` (ตั้ง cookie `csrf_token` ให้ด้วย) แล้วแนบ header `X-CSRF-Token` ทุก request ที่ไม่ใช่ GET — `frontend/src/lib/api.js` ทำให้เอง และขอ token ใหม่ + ลองซ้ำ 1 ครั้งเมื่อ backend ตอบ `{ code: 'csrf' }`
+- Request ที่ **ไม่มี header `Origin`** (curl, สคริปต์, smoke test) ข้ามการตรวจ token เพราะไม่ใช่ browser จึงไม่มี cookie ให้ attacker ขี่ — ใช้ `curl` ยิง API ตรง ๆ ได้ตามปกติ
+- Request ที่มี `Origin` แต่ไม่ใช่ frontend ของเรา → 403 ทันที
+- Secret ของ token derive จาก `SSO_STATE_SECRET` ด้วย HMAC ไม่ต้องตั้งตัวแปรใหม่
+- Snyk Code/CodeQL อาจรายงาน "CSRF" ที่ `app.js` ซ้ำ: เป็น false positive เพราะ rule จับจากชื่อแพ็กเกจ `csurf` (เลิกดูแลแล้ว) ดู [CLAUDE.md](CLAUDE.md#ผลการสแกนความปลอดภัย)
+
 ## 📁 โครงสร้างโปรเจกต์
 
 ```
@@ -571,7 +584,11 @@ MFA-example-coding/
 │   ├── generate-secrets.sh      # สร้าง .env ทั้งหมด + generate secret ให้อัตโนมัติ
 │   └── smoke-test.sh            # ทดสอบ flow หลักทั้งหมดแบบ end-to-end ระดับ API (ใช้ใน CI ด้วย)
 ├── e2e/ui-test.mjs              # ทดสอบผ่านหน้าเว็บจริงด้วย Playwright (ใช้ใน CI ด้วย)
-├── .github/workflows/           # ci.yml (audit+scan+build+trivy+smoke test+UI test ทุก PR), cd.yml (publish image ตอน tag)
+├── .github/workflows/           # ci.yml (audit+Semgrep+OSV+Gitleaks+build+Trivy+smoke+UI test ทุก PR), codeql.yml, cd.yml (publish image ตอน tag)
+├── .github/dependabot.yml       # อัปเดต dependency รายสัปดาห์ (npm x3, GitHub Actions, Dockerfile)
+├── .gitleaks.toml               # config ของ Gitleaks (allowlist เฉพาะ false positive ที่ตรวจแล้ว)
+├── .snyk                        # ให้ Snyk Code ข้าม skills/ (เป็นสำเนา snapshot)
+├── skills/                      # Claude Code skills สกัดจากตัวอย่างใน repo นี้ (ดู skills/README.md)
 ├── CI-CD.md
 ├── CREDIT.md                    # รายชื่อ open-source software/บริการที่ใช้ในโปรเจกต์
 ├── backend/
@@ -580,7 +597,7 @@ MFA-example-coding/
 │   └── src/
 │       ├── config/              env.js (validate ด้วย zod), db.js, permissions.js, identityProviders.js (SSO)
 │       ├── db/                  migrations/ (001_init ... 004_passkeys), migrate.js, seed.js
-│       ├── middleware/          auth, rbac, rateLimit, error
+│       ├── middleware/          auth, rbac, rateLimit, csrf, error
 │       ├── validators/          zod schema ของทุก request
 │       ├── services/            business logic (user/token/twofa/passkey/audit/oidcClient/facebook/sso)
 │       ├── controllers/         auth, admin, sso, passkey controller
@@ -639,6 +656,8 @@ CI/CD อยู่ใน [CI-CD.md](CI-CD.md)
 
 ## 📡 API Reference
 
+> **CSRF:** `GET /api/csrf-token` → `{ csrfToken }` — request จาก browser ที่ไม่ใช่ GET ต้องแนบ `X-CSRF-Token` (ดู [CSRF protection](#csrf-protection)) ส่วน client ที่ไม่ส่ง `Origin` (curl) ไม่ต้อง
+
 ### Auth (`/api/auth`)
 
 | Method | Path | ต้อง login? | คำอธิบาย |
@@ -689,12 +708,13 @@ CI/CD อยู่ใน [CI-CD.md](CI-CD.md)
 ## 🛡 ความปลอดภัย: สแกนและ CI/CD
 
 โค้ดในโปรเจกต์นี้ผ่านการสแกนความปลอดภัยด้วย `npm audit` + [Semgrep](https://semgrep.dev) +
-[Trivy](https://trivy.dev) + [Snyk](https://snyk.io) (Snyk เชื่อมกับ repo ผ่าน GitHub integration แล้วเปิด
+[Trivy](https://trivy.dev) + [OSV-Scanner](https://google.github.io/osv-scanner/) + [Gitleaks](https://github.com/gitleaks/gitleaks) +
+[CodeQL](https://codeql.github.com) + [Snyk](https://snyk.io) (Snyk เชื่อมกับ repo ผ่าน GitHub integration แล้วเปิด
 PR แก้ dependency ให้อัตโนมัติ) และ manual review หลายรอบ — สรุปทุก finding ที่เจอและวิธีแก้อยู่ใน
 [CLAUDE.md](CLAUDE.md#ผลการสแกนความปลอดภัย)
 
 กระบวนการพัฒนา/ตรวจสอบอัตโนมัติ (CI) ทุก push/PR และ publish image (CD) ตอน release ออกแบบไว้ละเอียดที่
-[CI-CD.md](CI-CD.md) — สรุปสั้น ๆ: ทุก PR ต้องผ่าน `npm audit`, Semgrep scan, `docker compose build`, และ
+[CI-CD.md](CI-CD.md) — สรุปสั้น ๆ: ทุก PR ต้องผ่าน `npm audit`, Semgrep, OSV-Scanner, Gitleaks, CodeQL, `docker compose build`, Trivy และ
 smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh)) และ UI test ผ่าน browser ([e2e/ui-test.mjs](e2e/ui-test.mjs)) ก่อน merge ได้
 
 ## 🧱 ข้อจำกัดที่ตั้งใจไว้
@@ -743,6 +763,54 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
 
 ดู [LICENSE](LICENSE)
 
-## Skills
+## 🧰 วิธีนำ repo และ skills ไปใช้ต่อ
 
-ตัวอย่างแต่ละส่วนของ repo นี้ถูกสกัดเป็น Claude Code skill แยกใช้ได้ที่ [skills/](skills/README.md) (2FA, Passkey/WebAuthn, RBAC, SSO/OIDC, session cookies, CSRF, CI scanning, Svelte 5, Docker Compose)
+### ใช้ repo นี้เป็นต้นแบบโปรเจกต์ของตัวเอง
+
+```bash
+git clone https://github.com/nuttkku/MFA-example-coding.git my-app && cd my-app
+bash scripts/generate-secrets.sh      # สร้าง .env ทั้งหมดพร้อม secret สุ่ม (ไม่ commit ไฟล์ .env)
+# แก้ ADMIN_EMAIL / ADMIN_PASSWORD ใน backend/.env (ไม่มี default) แล้ว:
+docker compose up -d --build          # http://localhost:5173
+```
+
+ก่อนเอาไปต่อยอดจริงควรแก้: ชื่อโปรเจกต์ (`name` ใน `docker-compose.yml`, `package.json` ทั้ง 3 ที่,
+`TWOFA_ISSUER`/`WEBAUTHN_RP_NAME`), ลบ/ปรับ `seedTestUser` (ไม่ทำงานเมื่อ `NODE_ENV=production` อยู่แล้ว),
+ตั้ง `WEBAUTHN_RP_ID`/`WEBAUTHN_ORIGIN` ให้ตรงโดเมนจริง (เปลี่ยนทีหลัง passkey เดิมใช้ไม่ได้), `COOKIE_SECURE=true`
+เมื่อใช้ HTTPS และ `TRUST_PROXY` เมื่อมี reverse proxy ดู [ตัวแปรแวดล้อม](#️-ตัวแปรแวดล้อม-environment-variables)
+
+ทดสอบก่อนแก้/ก่อน push (รายละเอียดใน [CI-CD.md](CI-CD.md)): `bash scripts/smoke-test.sh` และ
+`(cd e2e && npm ci && npx playwright install chromium && node ui-test.mjs)` — **บน Windows** curl ของ Git Bash
+ลบ cookie ที่หมดอายุไม่ครบ ทำให้ขั้น logout ใน smoke test ล้มทั้งที่ระบบถูกต้อง ให้รันใน Linux container แบบเดียวกับ CI:
+
+```bash
+docker run --rm --network container:<ชื่อ frontend container> -e BASE_URL=http://localhost:5173 \
+  -v "$PWD/scripts:/s:ro" node:20-alpine sh -c "apk add -q bash curl; tr -d '\r' < /s/smoke-test.sh > /tmp/t.sh; bash /tmp/t.sh"
+```
+
+### ใช้เฉพาะบางส่วนผ่าน Skills
+
+ตัวอย่างแต่ละส่วนถูกสกัดเป็น Claude Code skill ที่ [skills/](skills/README.md) — แต่ละโฟลเดอร์มี `SKILL.md`
+(กฎการออกแบบ + จุดที่เคยพลาดจริง) และ `reference/` (ไฟล์ source จริงให้ copy ไปปรับ):
+
+| Skill | ใช้เมื่อ |
+|---|---|
+| `forced-totp-2fa` | บังคับ TOTP 2FA ให้ทุกคน |
+| `passkeys-webauthn` | เพิ่ม passkey (passwordless + second factor) |
+| `express-rbac-permissions` | สิทธิ์ตาม role + หน้า admin |
+| `oidc-sso-login` | SSO ด้วย Keycloak/LINE/Facebook/OIDC |
+| `secure-session-cookies` | session ด้วย JWT cookie + refresh rotation |
+| `csrf-double-submit-spa` | ป้องกัน CSRF ให้ SPA ที่ใช้ cookie |
+| `security-scanning-ci` | CI สแกนความปลอดภัย + วิธี triage finding |
+| `svelte5-spa-auth-frontend` | Svelte 5 + Vite 8, guard, หน้า 2FA |
+| `docker-compose-dev-stack` | Postgres + Express + Vite + Keycloak ด้วย compose |
+
+ติดตั้ง skill ให้ Claude Code:
+
+```bash
+cp -r skills/forced-totp-2fa ~/.claude/skills/                 # ส่วนตัว (ทุกโปรเจกต์)
+cp -r skills/forced-totp-2fa <โปรเจกต์ของคุณ>/.claude/skills/   # เฉพาะโปรเจกต์นั้น (commit ให้ทีมได้)
+```
+
+จากนั้นสั่ง Claude Code เช่น "เพิ่ม 2FA แบบบังคับให้ระบบนี้" มันจะโหลด skill ที่ `description` ตรงให้เอง
+ไฟล์ใน `reference/` เป็น snapshot ของโค้ด ณ ตอนสกัด — ปรับ import/path ให้เข้ากับโปรเจกต์ปลายทาง
