@@ -180,7 +180,7 @@
                 <td>
                   {#if isAdmin}
                     <select value={user.role} onchange={(e) => changeRole(user, e.target.value)}>
-                      {#each ROLES as role}
+                      {#each ROLES as role (role)}
                         <option value={role}>{role}</option>
                       {/each}
                     </select>
@@ -232,7 +232,7 @@
         <div class="field">
           <label for="new-role">Role</label>
           <select id="new-role" bind:value={newUser.role}>
-            {#each ROLES as role}
+            {#each ROLES as role (role)}
               <option value={role}>{role}</option>
             {/each}
           </select>

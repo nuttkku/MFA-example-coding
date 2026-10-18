@@ -44,6 +44,7 @@ Implementation จริงอยู่ที่ [.github/workflows/ci.yml](.git
 
 | Job | ทำอะไร | ทำไมต้องมี |
 |---|---|---|
+| `quality` | `npm run lint` (ESLint) + `prettier --check` + `npm test` (unit test ของ backend ด้วย `node:test`, ไม่ต้องใช้ DB) แยก matrix backend/frontend | เร็วที่สุดในทุก job (ไม่ต้อง build image) จับ bug ระดับฟังก์ชันและรูปแบบโค้ดก่อนถึง smoke test |
 | `audit` | `npm audit --audit-level=high` ทั้ง `backend/`, `frontend/` และ `e2e/` (แยก job ด้วย matrix, `fail-fast: false` ให้เห็นผลครบทุกตัว) | จับ dependency ที่มีช่องโหว่รู้จักแล้วก่อนที่จะหลุดเข้า image |
 | `security-scan` | รัน [Semgrep](https://semgrep.dev) (ผ่าน Docker image `semgrep/semgrep`) ด้วย ruleset `p/security-audit`, `p/secrets`, `p/javascript`, `p/nodejsscan` แล้ว `--error` (fail ถ้าเจอ finding) | จับ pattern ที่เป็นช่องโหว่จริง เช่น GCM ที่ไม่ pin auth tag length, secret ที่ hardcode ในโค้ด — วิธีเดียวกับที่ใช้ตรวจโปรเจกต์นี้จริงตอนพัฒนา (ดู [CLAUDE.md](CLAUDE.md#ผลการสแกนความปลอดภัย)) |
 | `osv-scan` | [OSV-Scanner](https://google.github.io/osv-scanner/) สแกน lockfile ทั้ง 3 โฟลเดอร์กับฐานข้อมูล OSV | เป็นแหล่งข้อมูลช่องโหว่คนละฐานกับ `npm audit` (ทดแทน `snyk test` ตอนโควตา Snyk หมด) |
@@ -94,6 +95,11 @@ security patch ล่าสุดตอน build เสมอ ไม่พึ่
 ## รันเหมือน CI บนเครื่องตัวเอง (ก่อน push)
 
 ```bash
+# 0) lint + unit test (เร็ว ไม่ต้องมี Docker)
+(cd backend && npm ci && npm run lint && npm test)
+(cd frontend && npm ci && npm run lint)
+npx prettier@3.9.10 --check .
+
 # 1) audit dependency
 cd backend && npm ci && npm audit --audit-level=high && cd ..
 cd frontend && npm ci && npm audit --audit-level=high && cd ..
