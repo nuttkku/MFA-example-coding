@@ -54,6 +54,14 @@ echo "--- health check ---"
 curl -sf "$BASE_URL/api/health" > /dev/null || fail "backend health check"
 pass "backend healthy"
 
+echo "--- CSRF: browser-style cross-site / token-less state changes are blocked ---"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Origin: http://evil.example" -H "Content-Type: application/json"   -d '{"email":"a@b.co","password":"x"}' "$BASE_URL/api/auth/login")
+[ "$STATUS" = "403" ] || fail "expected 403 for a POST from a foreign Origin, got $STATUS"
+pass "POST from a foreign Origin is rejected (403)"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Origin: http://localhost:5173" -H "Content-Type: application/json"   -d '{"email":"a@b.co","password":"x"}' "$BASE_URL/api/auth/login")
+[ "$STATUS" = "403" ] || fail "expected 403 for a browser-origin POST without CSRF token, got $STATUS"
+pass "browser-origin POST without a CSRF token is rejected (403)"
+
 echo "--- bootstrap admin: forced 2FA setup ---"
 LOGIN=$(curl -s -c admin_cookies.txt -H "Content-Type: application/json" \
   -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" \

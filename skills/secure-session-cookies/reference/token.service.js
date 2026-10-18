@@ -1,0 +1,241 @@
+import jwt from 'jsonwebtoken';
+import crypto from 'node:crypto';
+import { env } from '../config/env.js';
+import { pool } from '../config/db.js';
+import { UnauthorizedError } from '../utils/errors.js';
+
+export const COOKIE_NAMES = {
+  preAuth: 'pre_auth_token',
+  access: 'access_token',
+  refresh: 'refresh_token',
+  ssoState: 'sso_state',
+};
+
+const SSO_STATE_TTL = '10m';
+
+const COOKIE_BASE = {
+  httpOnly: true,
+  secure: env.COOKIE_SECURE,
+  sameSite: 'lax',
+  path: '/',
+};
+
+// Single place that sets a session-bearing cookie, so the security attributes
+// are written out literally right where the cookie is created.
+function setSecureCookie(res, name, value, maxAge) {
+  res.cookie(name, value, {
+    httpOnly: true,
+    secure: env.COOKIE_SECURE,
+    sameSite: 'lax',
+    path: '/',
+    maxAge,
+  });
+}
+
+// Pinned explicitly (rather than relying on jsonwebtoken's default algorithm
+// inference from the key type) so a token can never be verified under a
+// different/weaker algorithm than the one it was signed with.
+const JWT_ALGORITHM = 'HS256';
+
+function sha256(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function signWithMaxAge(payload, secret, ttl) {
+  const token = jwt.sign(payload, secret, { expiresIn: ttl, algorithm: JWT_ALGORITHM });
+  // Re-verify the token we just signed (rather than jwt.decode, which skips
+  // signature checks) to read back its expiry.
+  const { exp } = jwt.verify(token, secret, { algorithms: [JWT_ALGORITHM] });
+  const maxAge = exp * 1000 - Date.now();
+  return { token, maxAge };
+}
+
+// --- Pre-auth token: issued right after password verification, before 2FA is
+// satisfied. It only ever carries enough authority to complete the specific
+// 2FA stage it was issued for - it cannot be used to call any authenticated API.
+export function issuePreAuthCookie(res, userId, stage) {
+  const { token, maxAge } = signWithMaxAge(
+    { sub: userId, stage, typ: 'pre_auth' },
+    env.PRE_AUTH_TOKEN_SECRET,
+    env.PRE_AUTH_TOKEN_TTL,
+  );
+  setSecureCookie(res, COOKIE_NAMES.preAuth, token, maxAge);
+}
+
+export function verifyPreAuthCookie(req, expectedStage) {
+  const token = req.cookies[COOKIE_NAMES.preAuth];
+  if (!token) throw new UnauthorizedError('2FA session expired, please log in again');
+
+  let payload;
+  try {
+    payload = jwt.verify(token, env.PRE_AUTH_TOKEN_SECRET, { algorithms: [JWT_ALGORITHM] });
+  } catch {
+    throw new UnauthorizedError('2FA session expired, please log in again');
+  }
+
+  if (payload.typ !== 'pre_auth' || payload.stage !== expectedStage) {
+    throw new UnauthorizedError('2FA session expired, please log in again');
+  }
+  return payload;
+}
+
+export function clearPreAuthCookie(res) {
+  res.clearCookie(COOKIE_NAMES.preAuth, COOKIE_BASE);
+}
+
+// --- SSO state: holds the CSRF state / OIDC nonce / PKCE code_verifier for an
+// in-progress external login between the redirect to the identity provider and
+// the callback coming back. Signed with its own secret so it can never be
+// confused with (or forged as) any of the other cookie types above.
+export function issueSsoStateCookie(res, statePayload) {
+  const { token, maxAge } = signWithMaxAge({ ...statePayload, typ: 'sso_state' }, env.SSO_STATE_SECRET, SSO_STATE_TTL);
+  setSecureCookie(res, COOKIE_NAMES.ssoState, token, maxAge);
+}
+
+export function verifySsoStateCookie(req, expectedProvider) {
+  const token = req.cookies[COOKIE_NAMES.ssoState];
+  if (!token) throw new UnauthorizedError('Login attempt expired, please try again');
+
+  let payload;
+  try {
+    payload = jwt.verify(token, env.SSO_STATE_SECRET, { algorithms: [JWT_ALGORITHM] });
+  } catch {
+    throw new UnauthorizedError('Login attempt expired, please try again');
+  }
+
+  if (payload.typ !== 'sso_state' || payload.provider !== expectedProvider) {
+    throw new UnauthorizedError('Login attempt expired, please try again');
+  }
+  return payload;
+}
+
+export function clearSsoStateCookie(res) {
+  res.clearCookie(COOKIE_NAMES.ssoState, COOKIE_BASE);
+}
+
+// --- Access token: short-lived, used to authenticate normal API calls.
+export function issueAccessCookie(res, user) {
+  const { token, maxAge } = signWithMaxAge(
+    { sub: user.id, role: user.role, typ: 'access' },
+    env.ACCESS_TOKEN_SECRET,
+    env.ACCESS_TOKEN_TTL,
+  );
+  setSecureCookie(res, COOKIE_NAMES.access, token, maxAge);
+}
+
+export function verifyAccessCookie(req) {
+  const token = req.cookies[COOKIE_NAMES.access];
+  if (!token) throw new UnauthorizedError('Not authenticated');
+
+  let payload;
+  try {
+    payload = jwt.verify(token, env.ACCESS_TOKEN_SECRET, { algorithms: [JWT_ALGORITHM] });
+  } catch {
+    throw new UnauthorizedError('Session expired');
+  }
+
+  if (payload.typ !== 'access') throw new UnauthorizedError('Not authenticated');
+  return payload;
+}
+
+// --- Refresh token: long-lived, stored server-side only as a hash so a leaked
+// database dump does not hand out usable sessions. Rotated on every use; if a
+// token that was already rotated away is ever presented again, that is a strong
+// signal of theft, so we revoke the entire session family for that user.
+export async function issueRefreshCookie(res, userId, { ipAddress, userAgent } = {}) {
+  const jti = crypto.randomUUID();
+  const { token, maxAge } = signWithMaxAge(
+    { sub: userId, jti, typ: 'refresh' },
+    env.REFRESH_TOKEN_SECRET,
+    env.REFRESH_TOKEN_TTL,
+  );
+
+  await pool.query(
+    `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, ip_address, user_agent)
+     VALUES ($1, $2, $3, now() + ($4 || ' milliseconds')::interval, $5, $6)`,
+    [jti, userId, sha256(token), maxAge, ipAddress ?? null, userAgent ?? null],
+  );
+
+  setSecureCookie(res, COOKIE_NAMES.refresh, token, maxAge);
+  return jti;
+}
+
+export async function rotateRefreshCookie(req, res) {
+  const token = req.cookies[COOKIE_NAMES.refresh];
+  if (!token) throw new UnauthorizedError('Not authenticated');
+
+  let payload;
+  try {
+    payload = jwt.verify(token, env.REFRESH_TOKEN_SECRET, { algorithms: [JWT_ALGORITHM] });
+  } catch {
+    throw new UnauthorizedError('Session expired, please log in again');
+  }
+  if (payload.typ !== 'refresh') throw new UnauthorizedError('Not authenticated');
+
+  const { rows } = await pool.query('SELECT * FROM refresh_tokens WHERE id = $1', [payload.jti]);
+  const record = rows[0];
+
+  if (!record || record.token_hash !== sha256(token)) {
+    throw new UnauthorizedError('Session expired, please log in again');
+  }
+
+  // Only a token that was *rotated* (replaced_by set) signals theft when it
+  // comes back. One revoked for an ordinary reason - logout, password change,
+  // admin action - is simply dead; treating it as theft would let a stale
+  // device (or whoever holds its old cookie) log the user out everywhere,
+  // including the session they just created by changing their password.
+  if (record.revoked_at) {
+    if (record.replaced_by) await revokeAllForUser(payload.sub);
+    throw new UnauthorizedError('Session revoked - please log in again');
+  }
+
+  // Revoke-and-check in one conditional UPDATE: if two requests present the
+  // same token concurrently, only one can flip revoked_at, and the loser is
+  // treated as reuse of a rotated token (the winner is rotating it right now).
+  const { rowCount } = await pool.query(
+    'UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL',
+    [payload.jti],
+  );
+  if (rowCount !== 1) {
+    await revokeAllForUser(payload.sub);
+    throw new UnauthorizedError('Session revoked - please log in again');
+  }
+
+  const newJti = await issueRefreshCookie(res, payload.sub, {
+    ipAddress: req.ip,
+    userAgent: req.get('user-agent'),
+  });
+  await pool.query('UPDATE refresh_tokens SET replaced_by = $2 WHERE id = $1', [payload.jti, newJti]);
+
+  return payload.sub;
+}
+
+export async function revokeRefreshCookie(req) {
+  const token = req.cookies[COOKIE_NAMES.refresh];
+  if (!token) return;
+  try {
+    const payload = jwt.verify(token, env.REFRESH_TOKEN_SECRET, { algorithms: [JWT_ALGORITHM] });
+    await pool.query('UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL', [
+      payload.jti,
+    ]);
+  } catch {
+    // Token already invalid/expired - nothing to revoke.
+  }
+}
+
+export async function revokeAllForUser(userId) {
+  await pool.query('UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [
+    userId,
+  ]);
+}
+
+export function clearSessionCookies(res) {
+  res.clearCookie(COOKIE_NAMES.access, COOKIE_BASE);
+  res.clearCookie(COOKIE_NAMES.refresh, COOKIE_BASE);
+}
+
+export async function issueFullSession(req, res, user) {
+  issueAccessCookie(res, user);
+  await issueRefreshCookie(res, user.id, { ipAddress: req.ip, userAgent: req.get('user-agent') });
+  clearPreAuthCookie(res);
+}

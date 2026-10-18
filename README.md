@@ -622,3 +622,7 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
 ## License
 
 ดู [LICENSE](LICENSE)
+
+## Skills
+
+ตัวอย่างแต่ละส่วนของ repo นี้ถูกสกัดเป็น Claude Code skill แยกใช้ได้ที่ [skills/](skills/README.md) (2FA, RBAC, SSO/OIDC, session cookies, CSRF, CI scanning, Svelte 5, Docker Compose)

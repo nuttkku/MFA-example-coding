@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 
 const SALT_ROUNDS = 10;
@@ -14,7 +15,6 @@ export async function verifySecret(plainText, hash) {
 // the usual cost when there is no real hash to compare against (unknown email,
 // SSO-only account with no local password), keeping response timing consistent
 // with a genuine wrong-password check and avoiding a user-enumeration oracle.
-// Flagged by Semgrep as a hardcoded secret / bcrypt hash - a reviewed false
-// positive (see above and CLAUDE.md), so suppressed on this line only.
-// nosemgrep
-export const DUMMY_PASSWORD_HASH = '$2a$10$Zn8EIX3zFEyEEXMPodxeQ.34WgznQaBtiDkJYGPZATdOAUjnVLoPu';
+// Generated at startup from random bytes (same cost factor as real hashes), so
+// no hash literal lives in the source and nobody can know a matching password.
+export const DUMMY_PASSWORD_HASH = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), SALT_ROUNDS);

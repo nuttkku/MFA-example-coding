@@ -38,3 +38,7 @@ export const updateUserSchema = z.object({
 export const resetPasswordSchema = z.object({
   temporaryPassword: password,
 });
+
+export const listUsersQuerySchema = z.object({
+  search: z.string().max(255).optional(),
+});

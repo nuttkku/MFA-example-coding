@@ -157,6 +157,17 @@ Snyk สแกน `package.json`/`package-lock.json` แล้วเปิด PR
 เดียวกันได้ (ดูตัวอย่างรอบ 4 ใน [CLAUDE.md](CLAUDE.md#ผลการสแกนความปลอดภัย): Snyk เสนอ Express 5 เพื่อแก้
 `qs` แต่ Express 4.22.3 ดึง `qs` ที่แก้แล้วมาให้เหมือนกัน)
 
+### รัน Snyk จาก CLI บนเครื่อง
+
+```bash
+snyk auth                              # เปิดเบราว์เซอร์ให้ login ครั้งเดียว
+(cd backend && snyk test)              # dependency (ทำแยกทีละโฟลเดอร์: backend / frontend / e2e)
+snyk code test                         # static analysis ของโค้ดเรา (ใช้ --json เพื่อดู ruleId/บรรทัด)
+```
+
+free tier มีโควตา test ต่อเดือนจำกัด — รวมการรันให้น้อยครั้ง ผล `snyk code` ที่ rule จับจากชื่อแพ็กเกจ
+(เช่น `UseCsurfForExpress`) ดู [CLAUDE.md](CLAUDE.md#ผลการสแกนความปลอดภัย) รอบ 5
+
 ### กดทับ (suppress) finding ของ Semgrep
 
 ใช้ `// nosemgrep` ใส่**บรรทัดก่อนหน้า**บรรทัดที่โดนเท่านั้น (กดทับเฉพาะบรรทัดนั้น ไม่ใช่ทั้งไฟล์/ทั้ง rule)

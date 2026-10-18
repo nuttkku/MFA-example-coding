@@ -1,0 +1,130 @@
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { hashSecret } from '../utils/password.js';
+import { ConflictError, NotFoundError } from '../utils/errors.js';
+import { createUserSchema, updateUserSchema, resetPasswordSchema, userIdParamSchema, listUsersQuerySchema } from '../validators/schemas.js';
+import {
+  listUsers,
+  createUser,
+  findByEmail,
+  findById,
+  updateRoleAndStatus,
+  setPasswordHash,
+  resetTwoFactor,
+  resetFailedLogins,
+  resetFailedTwoFactor,
+} from '../services/user.service.js';
+import { revokeAllForUser } from '../services/token.service.js';
+import { recordEvent, listEvents } from '../services/audit.service.js';
+
+// Validated up front so a malformed id is a clean 404 instead of Postgres
+// rejecting it as invalid UUID syntax deep inside a query (a 500 + error log).
+function parseUserId(req) {
+  const result = userIdParamSchema.safeParse(req.params.id);
+  if (!result.success) throw new NotFoundError('User not found');
+  // Postgres accepts upper-case UUIDs, so normalise - otherwise the
+  // "id === req.user.id" self-demotion guard in patchUser could be sidestepped
+  // by an admin passing their own id in upper case.
+  return result.data.toLowerCase();
+}
+
+export const getUsers = asyncHandler(async (req, res) => {
+  const { search } = listUsersQuerySchema.parse(req.query);
+  const users = await listUsers({ search: search ?? null });
+  res.json({ users });
+});
+
+export const postUser = asyncHandler(async (req, res) => {
+  const { email, fullName, role, temporaryPassword } = createUserSchema.parse(req.body);
+
+  const existing = await findByEmail(email);
+  if (existing) throw new ConflictError('A user with this email already exists');
+
+  const passwordHash = await hashSecret(temporaryPassword);
+  const user = await createUser({ email, fullName, passwordHash, role });
+
+  await recordEvent({
+    userId: req.user.id,
+    eventType: 'admin_user_created',
+    ipAddress: req.ip,
+    metadata: { targetUserId: user.id, email: user.email, role },
+  });
+
+  res.status(201).json({ user });
+});
+
+export const patchUser = asyncHandler(async (req, res) => {
+  const id = parseUserId(req);
+  const { role, status } = updateUserSchema.parse(req.body);
+
+  const target = await findById(id);
+  if (!target) throw new NotFoundError('User not found');
+
+  if (id === req.user.id && ((role && role !== 'admin') || status === 'disabled')) {
+    throw new ConflictError('You cannot remove your own admin access or disable your own account');
+  }
+
+  const updated = await updateRoleAndStatus(id, { role, status });
+
+  if (status === 'disabled') {
+    await revokeAllForUser(id);
+  }
+
+  await recordEvent({
+    userId: req.user.id,
+    eventType: 'admin_user_updated',
+    ipAddress: req.ip,
+    metadata: { targetUserId: id, role, status },
+  });
+
+  res.json({ user: updated });
+});
+
+export const postResetPassword = asyncHandler(async (req, res) => {
+  const id = parseUserId(req);
+  const { temporaryPassword } = resetPasswordSchema.parse(req.body);
+
+  const target = await findById(id);
+  if (!target) throw new NotFoundError('User not found');
+
+  const passwordHash = await hashSecret(temporaryPassword);
+  await setPasswordHash(id, passwordHash, { mustChangePassword: true });
+  await resetFailedLogins(id);
+  await resetFailedTwoFactor(id);
+  await revokeAllForUser(id);
+
+  await recordEvent({
+    userId: req.user.id,
+    eventType: 'admin_password_reset',
+    ipAddress: req.ip,
+    metadata: { targetUserId: id },
+  });
+
+  res.json({ ok: true });
+});
+
+export const postResetTwoFactor = asyncHandler(async (req, res) => {
+  const id = parseUserId(req);
+
+  const target = await findById(id);
+  if (!target) throw new NotFoundError('User not found');
+
+  // Clearing totp_enabled/totp_secret_enc means the very next login this user
+  // attempts drops back into the forced setup stage - there is no way to log
+  // in with 2FA left disabled.
+  await resetTwoFactor(id);
+  await revokeAllForUser(id);
+
+  await recordEvent({
+    userId: req.user.id,
+    eventType: 'admin_2fa_reset',
+    ipAddress: req.ip,
+    metadata: { targetUserId: id },
+  });
+
+  res.json({ ok: true });
+});
+
+export const getAuditLogs = asyncHandler(async (req, res) => {
+  const events = await listEvents({ limit: 100 });
+  res.json({ events });
+});

@@ -499,6 +499,31 @@ session ชั่วคราวเป็นสิทธิ์ข้าม 2FA �
 ผ่าน `verifyTotpCode` ตัวเดียวกับ login (มี replay protection) ผิดแล้วนับเข้า 2FA lockout ตัวเดียวกัน และมี
 `twoFaLimiter`
 
+### รอบ 5 (Snyk CLI: `snyk test` + `snyk code test`) — เหลือ 0 ยกเว้น 1 false positive
+
+เริ่มจาก Snyk Code 13 finding + dependency 2 ตัว (`zod` high, `qs` high) ปิดหมดโดยแก้โค้ดจริง:
+
+| จุดที่เจอ | เครื่องมือ | การแก้ |
+|---|---|---|
+| `zod@3` Allocation of Resources Without Limits (high) | Snyk | อัปเป็น `zod@^4.6.6` (schema เดิมใช้ได้ทั้งหมด ไม่ต้องแก้) |
+| `qs@6.16.0` Uncaught Exception (high) ผ่าน express | Snyk | `overrides: { qs: ^6.16.1 }` |
+| Cookie ไม่มี HttpOnly/Secure (8 finding) — Snyk ไม่ตามค่าใน object spread (`...COOKIE_BASE`) | Snyk Code | ตั้งทุก cookie ผ่าน `setSecureCookie()` ตัวเดียวที่เขียน flag ตรง ๆ |
+| `jwt.decode()` ใน `signWithMaxAge` | Snyk Code | เปลี่ยนเป็น `jwt.verify()` อ่าน `exp` |
+| `DUMMY_PASSWORD_HASH` hardcoded | Snyk Code | สร้างตอน start ด้วย `bcrypt.hashSync(randomBytes)` (เอา `// nosemgrep` ออกได้) |
+| `req.query.search` ไม่ตรวจ type | Snyk Code | `listUsersQuerySchema.parse(req.query)` |
+| ไม่มี CSRF protection | Snyk Code | **double-submit token** ด้วย `csrf-csrf` + Origin guard ([csrf.middleware.js](backend/src/middleware/csrf.middleware.js)) |
+
+**CSRF**: browser ทุก request ที่ไม่ใช่ GET ต้องส่ง header `X-CSRF-Token` (ได้จาก `GET /api/csrf-token`, frontend
+`api.js` จัดการให้เอง + retry 1 ครั้งถ้า 403) และ `Origin` ต้องตรง `FRONTEND_ORIGIN` request ที่**ไม่มี `Origin`**
+(curl/smoke test/server-to-server) ข้ามการตรวจ token เพราะไม่ใช่ browser จึงไม่มี ambient cookie ให้ attacker
+ขี่ — secret ของ token derive จาก `SSO_STATE_SECRET` ด้วย HMAC (ไม่ต้องมี env ใหม่) **`cookieParser` ต้องอยู่ก่อน
+CSRF middleware** (smoke test จับได้: ไม่งั้น 500) smoke test มี assertion ทั้ง foreign Origin และ Origin ถูกแต่ไม่มี token
+
+**ที่ยังเหลือ 1 ตัว**: Snyk Code `UseCsurfForExpress` ที่ [app.js](backend/src/app.js) เป็น false positive — rule
+จับจากชื่อแพ็กเกจ `csurf` (deprecated แล้ว) ไม่รู้จัก `csrf-csrf` ไม่เพิ่มแพ็กเกจที่เลิกดูแลเพียงเพื่อเอาใจ scanner
+(`snyk ignore` ใน CLI เขียนเป็น exclude ทั้งไฟล์และไม่มีผลกับ Snyk Code, inline `deepcode ignore` ใช้ได้เฉพาะ IDE
+plugin) ต้อง ignore ที่เว็บ Snyk พร้อมเหตุผล
+
 ## การทดสอบที่ทำไปแล้ว
 
 Build และรันผ่าน `docker compose` จริงบน Docker Desktop (ทั้ง 2 variant: มี/ไม่มี Keycloak) แล้วทดสอบผ่าน

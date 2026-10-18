@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Shell scripts must keep LF endings (CRLF breaks bash: "set: pipefail: invalid option name")
+*.sh text eol=lf
