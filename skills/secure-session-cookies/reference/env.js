@@ -1,5 +1,8 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import { z } from 'zod';
+
+// dotenv 17+ logs a line on every load by default; keep startup logs clean.
+dotenv.config({ quiet: true });
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
