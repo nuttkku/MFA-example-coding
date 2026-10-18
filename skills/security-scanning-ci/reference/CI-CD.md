@@ -192,6 +192,7 @@ free tier มีโควตา test ต่อเดือนจำกัด —
 
 ## Branching และ versioning
 
+- **Branch protection บน `main` เปิดแล้ว**: push ตรงไม่ได้ ต้องผ่าน PR และ check ใน CI + CodeQL ต้องเขียวครบ 17 ตัว (ยกเว้น Snyk เพราะติดโควตา private test) ห้าม force-push/ลบ branch ไม่บังคับ reviewer เพราะผู้ดูแลคนเดียว (admin ข้ามได้ในกรณีฉุกเฉิน) — **เพิ่ม/เปลี่ยนชื่อ job ใน CI ต้องอัปเดตรายชื่อ required checks ใน Settings → Branches ด้วย** ไม่งั้น PR จะค้างรอ check ที่ไม่มีวันมา และ PR ที่แก้ `.github/workflows/` ต้อง merge ด้วย token ที่มี scope `workflow`
 - Branch เดียว: `main` — PR ทุกอันต้องผ่าน CI ครบก่อน merge ไม่มี long-lived branch อื่น (repo เดี่ยว
   ขนาดเล็ก ยังไม่จำเป็นต้องมี `develop`/`release/*` branch)
 - Versioning ตาม [Semantic Versioning](https://semver.org): `vMAJOR.MINOR.PATCH`

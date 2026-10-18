@@ -7,9 +7,10 @@
 //   KEYCLOAK_USER/PASS  default: the demo user in keycloak/realm-export.json
 //   CHROMIUM_PATH       optional - use an already-installed Chromium binary
 import { chromium } from 'playwright';
-import otplib from 'otplib';
+import { generateSync } from 'otplib';
 
-const { authenticator } = otplib;
+// otplib 13: generateSync({ secret }) replaces v12's totp(secret).
+const totp = (secret) => generateSync({ secret });
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
 const KEYCLOAK_USER = process.env.KEYCLOAK_USER || 'demo@example.com';
@@ -79,7 +80,7 @@ pass('SSO alone does not grant a session');
 
 await page.waitForSelector('img[alt^="Scan this QR"]');
 const secret = (await page.textContent('.code-block')).trim();
-const setupCode = authenticator.generate(secret);
+const setupCode = totp(secret);
 await page.fill('#code', setupCode);
 await page.click('button[type=submit]');
 await expectRoute('#/2fa/backup-codes', '2FA setup confirmed, backup codes shown');
@@ -111,7 +112,7 @@ await page.click('button[type=submit]');
 await check(page.waitForSelector('.alert-error'), 'the code already used during setup is rejected (replay)');
 
 await waitForNextTotpStep();
-await page.fill('#code', authenticator.generate(secret));
+await page.fill('#code', totp(secret));
 await page.click('button[type=submit]');
 await expectRoute('#/dashboard', 'fresh TOTP code completes the SSO login');
 

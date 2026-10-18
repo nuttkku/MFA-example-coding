@@ -9,9 +9,10 @@
 //   CHROMIUM_PATH optional - use an already-installed Chromium binary
 import { randomBytes } from 'node:crypto';
 import { chromium } from 'playwright';
-import otplib from 'otplib';
+import { generateSync } from 'otplib';
 
-const { authenticator } = otplib;
+// otplib 13: generateSync({ secret }) replaces v12's totp(secret).
+const totp = (secret) => generateSync({ secret });
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
@@ -78,7 +79,7 @@ async function login(email, password) {
 async function completeSetup() {
   await page.waitForSelector('img[alt^="Scan this QR"]');
   const secret = (await page.textContent('.code-block')).trim();
-  await page.fill('#code', authenticator.generate(secret));
+  await page.fill('#code', totp(secret));
   await page.click('button[type=submit]');
   await expectRoute('#/2fa/backup-codes', 'setup confirm shows backup codes');
   const count = await page.locator('.backup-codes-grid > div').count();
@@ -190,7 +191,7 @@ await page.fill('#regen-code', '000000');
 await page.click('button:has-text("Regenerate backup codes")');
 await check(page.waitForSelector('.alert-error'), 'wrong code is rejected');
 await waitForNextTotpStep();
-await page.fill('#regen-code', authenticator.generate(adminSecret));
+await page.fill('#regen-code', totp(adminSecret));
 await page.click('button:has-text("Regenerate backup codes")');
 await expectRoute('#/2fa/backup-codes', 'valid TOTP code regenerates backup codes');
 const regenerated = await page.locator('.backup-codes-grid > div').allTextContents();
@@ -250,7 +251,7 @@ await check(
   'adding a passkey with a wrong TOTP code is refused',
 );
 await waitForNextTotpStep();
-await page.fill('#passkey-code', authenticator.generate(adminSecret));
+await page.fill('#passkey-code', totp(adminSecret));
 await page.click('button:has-text("Add a passkey")');
 await check(page.waitForSelector('.alert-success:has-text("Passkey added")'), 'passkey registered after TOTP step-up');
 await check(page.waitForSelector('td:has-text("UI test key")'), 'new passkey listed on the profile');
@@ -298,7 +299,7 @@ await page.click('a[href="#/profile"]');
 await expectRoute('#/profile', 'profile page');
 await waitForNextTotpStep();
 await page.fill('#passkey-name', 'User key');
-await page.fill('#passkey-code', authenticator.generate(userSecret));
+await page.fill('#passkey-code', totp(userSecret));
 await page.click('button:has-text("Add a passkey")');
 await check(page.waitForSelector('.alert-success:has-text("Passkey added")'), 'plain user registered a passkey');
 await page.click('button:has-text("Log out")');
@@ -312,7 +313,7 @@ await adminPage.fill('#email', ADMIN_EMAIL);
 await adminPage.fill('#password', ADMIN_NEW_PASSWORD);
 await adminPage.click('button[type=submit]');
 await adminPage.waitForURL((url) => url.hash.startsWith('#/2fa/verify'));
-await adminPage.fill('#code', authenticator.generate(adminSecret));
+await adminPage.fill('#code', totp(adminSecret));
 await adminPage.click('button[type=submit]');
 await adminPage.waitForURL((url) => url.hash.startsWith('#/dashboard'));
 await adminPage.goto(`${BASE_URL}/#/admin/users`);

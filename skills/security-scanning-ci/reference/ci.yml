@@ -155,11 +155,13 @@ jobs:
       - name: Start stack
         run: docker compose up -d --build
 
-      - name: Wait for backend health
+      # Wait through the Vite proxy, not the backend port: smoke-test.sh talks
+      # to :5173, and the dev server can come up after the backend does.
+      - name: Wait for frontend proxy and backend health
         run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:4000/api/health > /dev/null; then
-              echo "backend is up"
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5173/api/health > /dev/null; then
+              echo "stack is up"
               exit 0
             fi
             sleep 2

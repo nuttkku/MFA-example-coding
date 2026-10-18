@@ -34,16 +34,18 @@ cases, which is what makes "no bypass" provable.
    success or admin reset.
 3. **Re-load the user on every pre-auth request** (`loadPreAuthUser`): the cookie lives 5 minutes, during which
    the user may be disabled, deleted, or 2FA-locked.
-4. **Store TOTP secrets with AES-256-GCM** (must be decryptable), pin `authTagLength: 16` on both cipher and
+4. **Generate 20-byte (160-bit) secrets** (`authenticator.generateSecret(20)`, RFC 4226 s.4): otplib 12 defaults to
+   10 bytes, which otplib 13 rejects. Old shorter secrets keep verifying.
+5. **Store TOTP secrets with AES-256-GCM** (must be decryptable), pin `authTagLength: 16` on both cipher and
    decipher and check the tag length before `setAuthTag` (Semgrep `gcm-no-tag-length`). The key
    (`TOTP_ENCRYPTION_KEY`, 32 bytes hex) comes from env with **no default**.
-5. **Backup codes are bcrypt-hashed**, shown once, single-use via conditional `UPDATE ... WHERE used_at IS NULL`
+6. **Backup codes are bcrypt-hashed**, shown once, single-use via conditional `UPDATE ... WHERE used_at IS NULL`
    + `rowCount === 1` (two concurrent requests must not both win). Alphabet excludes 0/O/1/I/L.
-6. **Admin can only *reset* 2FA, never disable it**: reset clears secret + `totp_enabled`, so the user's next
+7. **Admin can only *reset* 2FA, never disable it**: reset clears secret + `totp_enabled`, so the user's next
    login falls back to `setup`.
-7. **Step-up for regenerating backup codes**: require a fresh TOTP code (not a backup code) - otherwise a stolen
+8. **Step-up for regenerating backup codes**: require a fresh TOTP code (not a backup code) - otherwise a stolen
    session cookie becomes permanent 2FA-bypass credentials.
-8. Rate-limit `/2fa/*` per IP with `skipSuccessfulRequests: true` (count only failures), plus a coarse
+9. Rate-limit `/2fa/*` per IP with `skipSuccessfulRequests: true` (count only failures), plus a coarse
    `generalLimiter` on every auth router. Counters live in memory by default; set `REDIS_URL` to share them
    across instances (`redis.js`, `docker-compose.redis.yml`; one key prefix per limiter, fail closed if Redis is down).
 
