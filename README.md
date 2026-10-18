@@ -1,7 +1,7 @@
-# 🔐 2FA Example — Login + RBAC + บังคับ 2FA (TOTP) + SSO (OIDC/Facebook/LINE/Keycloak)
+# 🔐 2FA Example — Login + RBAC + บังคับ 2FA (TOTP) + Passkey (WebAuthn) + SSO (OIDC/Facebook/LINE/Keycloak)
 
 โปรเจกต์ตัวอย่างสำหรับ **เรียนรู้การสร้างระบบ Login ที่บังคับ 2FA กับผู้ใช้ทุกคน** พร้อมระบบ
-**RBAC (Role-Based Access Control)**, หน้าบริหารจัดการผู้ใช้, และ **Single Sign-On (SSO)** ผ่าน
+**RBAC (Role-Based Access Control)**, หน้าบริหารจัดการผู้ใช้, **Passkey (WebAuthn/FIDO2)** และ **Single Sign-On (SSO)** ผ่าน
 Facebook / LINE / Keycloak / OpenID Connect ทั่วไป — เขียนขึ้นเพื่อให้อ่านโค้ดแล้วเข้าใจ "วิธีทำงานจริง"
 ของ TOTP 2FA, JWT session, OAuth2/OIDC, การเข้ารหัส/hash ข้อมูลลับ และ RBAC ไม่ใช่แค่เอาไปรันอย่างเดียว
 
@@ -14,6 +14,7 @@ Facebook / LINE / Keycloak / OpenID Connect ทั่วไป — เขีย�
 - [สถาปัตยกรรมระบบ](#-สถาปัตยกรรมระบบ)
 - [เริ่มใช้งาน (Quick Start)](#-เริ่มใช้งาน-quick-start)
 - [ขั้นตอนการทำงานของ 2FA](#-ขั้นตอนการทำงานของ-2fa) — หัวใจของโปรเจกต์นี้
+- [Passkey (WebAuthn / FIDO2)](#-passkey-webauthn--fido2)
 - [SSO / OIDC (Facebook, LINE, Keycloak)](#-sso--oidc-facebook-line-keycloak)
 - [RBAC ทำงานอย่างไร](#-rbac-ทำงานอย่างไร)
 - [ความลับถูกเก็บอย่างไร: hash vs encrypt](#-ความลับถูกเก็บอย่างไร-hash-vs-encrypt)
@@ -34,6 +35,7 @@ Facebook / LINE / Keycloak / OpenID Connect ทั่วไป — เขีย�
 | Backend | [Node.js 20](https://nodejs.org) + [Express 5](https://expressjs.com) |
 | Database | [PostgreSQL 16](https://www.postgresql.org) (ผ่าน `pg` driver, raw SQL — ไม่ใช้ ORM เพื่อให้เห็น query ตรง ๆ) |
 | 2FA | [otplib](https://github.com/yeojz/otplib) (TOTP) + [qrcode](https://github.com/soldair/node-qrcode) |
+| Passkey | [SimpleWebAuthn](https://simplewebauthn.dev) (`@simplewebauthn/server` + `@simplewebauthn/browser`) |
 | SSO / OIDC | [openid-client](https://github.com/panva/openid-client) v6 (Keycloak/LINE/generic OIDC) + Facebook OAuth2 เขียนมือ |
 | Auth | [jsonwebtoken](https://github.com/auth0/node-jsonwebtoken) (JWT ใน httpOnly cookie), [bcryptjs](https://github.com/dcodeIO/bcrypt.js) |
 | Identity Provider (optional) | [Keycloak](https://www.keycloak.org) — รันเป็น addon container ผ่าน `docker-compose.keycloak.yml` |
@@ -229,6 +231,83 @@ sequenceDiagram
 โค้ด TOTP ได้ตอน verify (ระบบเดา format จาก `XXXX-XXXX` เทียบกับ 6 หลักตัวเลข) แต่ละโค้ดใช้ได้ครั้งเดียว
 แล้วจะถูก mark `used_at` ทันที (ด้วย conditional `UPDATE ... WHERE used_at IS NULL` เพื่อให้ request
 ที่ยิงพร้อมกันด้วยโค้ดเดียวกันสำเร็จได้แค่ request เดียว)
+
+## 🗝 Passkey (WebAuthn / FIDO2)
+
+Passkey คือ credential แบบ public-key ที่ private key อยู่ในอุปกรณ์ของผู้ใช้ (Touch ID/Face ID, Windows Hello,
+Android, security key อย่าง YubiKey หรือ password manager ที่ sync ข้ามเครื่อง) และ**ไม่เคยออกจากอุปกรณ์** —
+server เก็บแค่ public key ไว้ตรวจลายเซ็นอย่างเดียว ข้อมูลที่หลุดจากฐานข้อมูลจึงเอาไป login ไม่ได้ และกัน phishing ได้ในตัว
+เพราะ browser ผูก credential ไว้กับ domain (RP ID) — เว็บปลอมที่ domain ไม่ตรงขอลายเซ็นไม่ได้
+
+### มาตรฐานที่ใช้
+
+Passkey เป็นมาตรฐานของ **W3C และ FIDO Alliance** เป็นหลัก (ไม่มี RFC ตัวเดียวที่นิยาม passkey) โดยใช้ RFC ของ IETF เป็นชิ้นส่วน:
+
+| มาตรฐาน | ใช้ตรงไหน |
+|---|---|
+| [W3C Web Authentication Level 3](https://www.w3.org/TR/webauthn-3/) | API ฝั่ง browser (`navigator.credentials.create/get`) และขั้นตอนตรวจฝั่ง server (§7.1 registration, §7.2 authentication) |
+| [FIDO2 CTAP 2.x](https://fidoalliance.org/specifications/) | โปรโตคอลระหว่าง browser กับ authenticator (browser จัดการให้) |
+| [RFC 9052](https://www.rfc-editor.org/rfc/rfc9052) / [RFC 9053](https://www.rfc-editor.org/rfc/rfc9053) (COSE) | รูปแบบ public key ที่เก็บ (`COSE_Key`) และ algorithm id (ES256 = -7, EdDSA = -8) |
+| [RFC 8812](https://www.rfc-editor.org/rfc/rfc8812) | COSE algorithm RS256 (-257) ที่ Windows Hello ใช้ |
+| [RFC 8949](https://www.rfc-editor.org/rfc/rfc8949) (CBOR) | encoding ของ attestation object / authenticator data |
+| [RFC 8809](https://www.rfc-editor.org/rfc/rfc8809) | IANA registry ของ attestation format / extension ของ WebAuthn |
+| [RFC 4648 §5](https://www.rfc-editor.org/rfc/rfc4648#section-5) (base64url) | encoding ของ credential id / challenge ใน JSON |
+
+งาน crypto/CBOR/COSE ทั้งหมดให้ [SimpleWebAuthn](https://simplewebauthn.dev) ทำ ไม่เขียนเอง — เหตุผลเดียวกับที่ใช้
+`openid-client` แทนการ verify JWT ของ OIDC เอง (จุดเล็ก ๆ ที่พลาดง่ายอาจทำให้ปลอมลายเซ็นได้)
+
+### ใช้ได้ 2 แบบ
+
+1. **Login แบบไม่ใช้รหัสผ่าน** — ปุ่ม "Sign in with a passkey" ที่หน้า login ไม่ต้องกรอก email/password เลย (ใช้
+   *discoverable credential*) แล้วได้ session เต็มทันที **แบบนี้ไม่ได้ข้าม 2FA**: server บังคับ
+   `userVerification: required` และตรวจ flag UV ใน authenticator data ที่ถูกเซ็นมา (ไม่ใช่แค่ขอเฉย ๆ) แปลว่า authenticator
+   ตรวจลายนิ้วมือ/ใบหน้า/PIN แล้วจริง passkey หนึ่งครั้งจึงครบ 2 ปัจจัยในตัว (สิ่งที่มี = อุปกรณ์ที่ถือ private key +
+   สิ่งที่เป็น/รู้ = biometric/PIN) ตรงกับที่ NIST SP 800-63B จัด authenticator แบบนี้เป็น multi-factor
+2. **ใช้แทนโค้ด TOTP ในขั้น 2FA** — หลัง login ด้วยรหัสผ่านหรือ SSO หน้า `/2fa/verify` จะมีปุ่ม "Use a passkey instead"
+   (แสดงเฉพาะบัญชีที่ลงทะเบียน passkey ไว้) ขั้นนี้ผ่านปัจจัยแรกมาแล้ว จึงขอ UV แบบ `preferred` (แค่ถือ authenticator อยู่ก็พอ)
+
+```mermaid
+sequenceDiagram
+    actor U as ผู้ใช้
+    participant FE as Frontend
+    participant BE as Backend
+    participant A as Authenticator<br/>(Touch ID / Windows Hello / security key)
+
+    U->>FE: กด "Sign in with a passkey"
+    FE->>BE: POST /api/auth/passkeys/login/options
+    BE->>BE: สุ่ม challenge เก็บในตาราง webauthn_challenges
+    BE-->>FE: options (challenge, rpId, userVerification: required)<br/>+ cookie webauthn_challenge (id ของแถว challenge)
+    FE->>A: navigator.credentials.get(options)
+    A->>U: ขอลายนิ้วมือ / ใบหน้า / PIN
+    A-->>FE: assertion (authenticatorData + clientDataJSON + signature)
+    FE->>BE: POST /api/auth/passkeys/login/verify { credential }
+    BE->>BE: DELETE challenge (ใช้ได้ครั้งเดียว) แล้วตรวจ origin, rpIdHash,<br/>flag UP+UV, ลายเซ็นด้วย public key ที่เก็บไว้, signature counter
+    BE->>BE: เช็คว่าบัญชีไม่ถูก disable และตั้ง TOTP ไว้แล้ว
+    BE-->>FE: 200 { stage: "complete" } + access/refresh cookie
+```
+
+### ลงทะเบียน passkey
+
+ทำได้ที่หน้า **Profile → Passkeys** หลัง login แล้วเท่านั้น และ**ต้องใส่โค้ด TOTP ปัจจุบันยืนยันก่อน (step-up)** —
+passkey คือ credential ที่ login ได้โดยไม่ต้องใช้รหัสผ่านหรือโค้ดอีก ถ้าแค่มี session ก็เพิ่มได้ คนที่ขโมย session cookie ไป
+ก็จะฝัง passkey ของตัวเองไว้เข้าบัญชีได้ถาวร (เหตุผลเดียวกับ regenerate backup codes) ระบบขอ `residentKey: required`
+(เพื่อให้ login แบบไม่กรอก email ได้) และ `userVerification: required` โดยไม่ขอ attestation (ไม่จำกัดยี่ห้อ authenticator)
+
+### จุดที่ออกแบบไว้โดยตั้งใจ
+
+- **ต้องตั้ง TOTP ก่อนเสมอ** — passkey เพิ่มได้หลังผ่าน forced 2FA setup เท่านั้น TOTP + backup codes จึงยังเป็นทางกู้บัญชี
+  เวลาอุปกรณ์หาย และ admin **reset 2FA จะลบ passkey ทั้งหมดของ user ด้วย** (reset 2FA หมายถึง "อุปกรณ์หาย" ซึ่ง passkey
+  อาจอยู่ในอุปกรณ์นั้น)
+- **Challenge ใช้ได้ครั้งเดียว** — เก็บฝั่ง server (ตาราง `webauthn_challenges`, อายุ 5 นาที) browser ถือแค่ id ใน httpOnly
+  cookie แล้ว server ใช้ `DELETE ... RETURNING` ตอนตรวจ ไม่ว่าผลจะผ่านหรือไม่ challenge ยังผูกกับจุดประสงค์
+  (`register`/`login`/`2fa`) และ user ด้วย
+- **RP ID/origin มาจาก config ไม่ใช่จาก request** (`WEBAUTHN_RP_ID`/`WEBAUTHN_ORIGIN`, default มาจาก `FRONTEND_ORIGIN`) —
+  เหตุผลเดียวกับ `redirect_uri` ของ SSO: Vite proxy เปลี่ยน Host header ไปแล้ว
+- **บัญชีที่ admin disable แล้ว login ด้วย passkey ไม่ได้** เหมือนทุกช่องทาง ส่วน password lockout ไม่ถูกเช็ค (เหตุผลเดียวกับ SSO:
+  ใครรู้แค่ email ก็ยิงรหัสผิดให้บัญชีล็อกได้)
+- **User handle** ที่ฝากไว้ใน authenticator คือ UUID ของบัญชี ไม่ใช่ email (WebAuthn §14.6.1 ห้ามใส่ข้อมูลส่วนบุคคล)
+- Browser ยอมให้ใช้ WebAuthn เฉพาะ `https://` หรือ `http://localhost` — deploy จริงต้องมี HTTPS และเนื่องจาก passkey ผูกกับ
+  RP ID ถ้าเปลี่ยน domain ทีหลัง passkey ที่ลงทะเบียนไว้ทั้งหมดจะใช้ไม่ได้
 
 ## 🔗 SSO / OIDC (Facebook, LINE, Keycloak)
 
@@ -477,17 +556,17 @@ revoke (mark ในตาราง `refresh_tokens`) แล้วออกตั
 │   ├── .env.example            # JWT secret, TOTP key, admin/test user bootstrap, SSO provider config ฯลฯ
 │   └── src/
 │       ├── config/              env.js (validate ด้วย zod), db.js, permissions.js, identityProviders.js (SSO)
-│       ├── db/                  migrations/ (001_init, 002_add_sso), migrate.js, seed.js
+│       ├── db/                  migrations/ (001_init ... 004_passkeys), migrate.js, seed.js
 │       ├── middleware/          auth, rbac, rateLimit, error
 │       ├── validators/          zod schema ของทุก request
-│       ├── services/            business logic (user/token/twofa/audit/oidcClient/facebook/sso)
-│       ├── controllers/         auth, admin, sso controller
+│       ├── services/            business logic (user/token/twofa/passkey/audit/oidcClient/facebook/sso)
+│       ├── controllers/         auth, admin, sso, passkey controller
 │       └── routes/
 └── frontend/
     ├── Dockerfile
     ├── .env.example
     └── src/
-        ├── lib/                 api.js, guards.js, stores/
+        ├── lib/                 api.js, passkeys.js (WebAuthn ceremonies), guards.js, stores/
         ├── pages/                1 ไฟล์ต่อ 1 หน้า (Login, Setup2FA, Verify2FA, AdminUsers, ...)
         ├── components/Navbar.svelte
         └── App.svelte            route table
@@ -516,6 +595,7 @@ CI/CD อยู่ใน [CI-CD.md](CI-CD.md)
 | `COOKIE_SECURE` | ตั้ง `true` เฉพาะตอนรันผ่าน HTTPS จริง |
 | `LOGIN_MAX_ATTEMPTS` / `LOGIN_LOCK_MINUTES` | นโยบาย account lockout |
 | `TWOFA_MAX_ATTEMPTS` / `TWOFA_LOCK_MINUTES` | จำนวนโค้ด 2FA ผิดต่อบัญชีก่อนล็อก 2FA และระยะเวลาล็อก (default `5` / `15`) |
+| `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGIN` / `WEBAUTHN_RP_NAME` | (optional) domain ที่ passkey ผูกไว้, origin ที่ browser ต้องรายงาน, ชื่อที่แสดงใน dialog ของ passkey — default คือ hostname ของ `FRONTEND_ORIGIN` / `FRONTEND_ORIGIN` / `TWOFA_ISSUER` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_FULL_NAME` | บัญชี admin ที่ seed ให้อัตโนมัติตอน start ครั้งแรก (ถูกบังคับเปลี่ยนรหัสผ่าน + ตั้ง 2FA ทันทีที่ login ครั้งแรก) |
 | `TEST_USER_EMAIL` / `TEST_USER_PASSWORD` / `TEST_USER_FULL_NAME` | บัญชี role `user` สำหรับทดสอบ RBAC โดยไม่ต้องสร้างมือ (มี default ในตัว ไม่บังคับตั้งเหมือน `ADMIN_*`) — seed ให้เฉพาะเมื่อ `NODE_ENV` ไม่ใช่ `production` เท่านั้น |
 | `FACEBOOK_ENABLED` / `FACEBOOK_CLIENT_ID` / `FACEBOOK_CLIENT_SECRET` | เปิด Facebook Login (ดูวิธีขอมาที่หัวข้อ [SSO / OIDC](#-sso--oidc-facebook-line-keycloak)) |
@@ -549,6 +629,20 @@ CI/CD อยู่ใน [CI-CD.md](CI-CD.md)
 | GET | `/me` | ✅ | ข้อมูลผู้ใช้ปัจจุบัน |
 | POST | `/change-password` | ✅ | เปลี่ยนรหัสผ่าน (ต้องยืนยันรหัสเดิม) — revoke session อื่นทั้งหมด แล้วออก session ใหม่ให้เครื่องนี้ |
 | POST | `/2fa/backup-codes/regenerate` | ✅ + โค้ด TOTP | สร้าง backup codes ชุดใหม่ (ชุดเดิมใช้ไม่ได้อีก) — ต้องส่ง `{ code }` เป็นโค้ด TOTP ปัจจุบัน (step-up) |
+
+### Passkey (`/api/auth/passkeys`)
+
+| Method | Path | ต้อง login? | คำอธิบาย |
+|---|---|---|---|
+| POST | `/login/options` | ❌ | เริ่ม login แบบไม่ใช้รหัสผ่าน — คืน options (challenge, `userVerification: required`) + cookie `webauthn_challenge` |
+| POST | `/login/verify` | ❌ (ต้องมี cookie `webauthn_challenge`) | ตรวจ assertion `{ credential }` → ออก session เต็ม |
+| GET | `/2fa/methods` | pre-auth (stage `verify`) | `{ totp, passkey }` — บัญชีนี้ใช้ passkey ในขั้น 2FA ได้หรือไม่ |
+| POST | `/2fa/options` | pre-auth (stage `verify`) | เริ่มใช้ passkey แทนโค้ด TOTP (จำกัดเฉพาะ passkey ของ user คนนี้) |
+| POST | `/2fa/verify` | pre-auth (stage `verify`) | ตรวจ assertion → ออก session (ผิดนับเข้า 2FA lockout เดียวกับโค้ด TOTP) |
+| GET | `/` | ✅ | รายการ passkey ของตัวเอง |
+| POST | `/register/options` | ✅ + โค้ด TOTP | เริ่มลงทะเบียน passkey — ต้องส่ง `{ code }` เป็นโค้ด TOTP ปัจจุบัน (step-up) |
+| POST | `/register/verify` | ✅ | ตรวจ attestation `{ name, credential }` → เก็บ public key |
+| DELETE | `/:id` | ✅ | ลบ passkey ของตัวเอง |
 
 ### SSO (`/api/auth/sso`)
 
@@ -592,6 +686,8 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
 - **ไม่มี SMS/email OTP** เป็นทางเลือกสำรอง (มีแต่ backup codes) — ลดความซับซ้อนของการต่อ third-party
 - **Rate limiter เก็บ state ใน memory ของ process เดียว** — ถ้า scale เป็นหลาย instance ต้องเปลี่ยนไปใช้
   shared store อย่าง Redis
+- **Passkey ใช้ได้เฉพาะหลังตั้ง TOTP แล้ว** (ไม่มีบัญชีแบบ passkey อย่างเดียว) — ตั้งใจให้ TOTP + backup codes
+  เป็นทางกู้บัญชีเสมอ และยังไม่รองรับ conditional UI (passkey autofill ในช่อง email) เพื่อให้โค้ดฝั่ง frontend เรียบง่าย
 - **Account lockout ไม่ครอบคลุม SSO login** — ตั้งใจ (กันไม่ให้ใครแค่รู้ email เหยื่อแล้วยิงรหัสผ่านผิด
   จนล็อก SSO ของเหยื่อไปด้วย) ดูเหตุผลเต็มใน [CLAUDE.md](CLAUDE.md)
 - Frontend เป็น Vite dev server ตรง ๆ (ไม่ได้ build เป็น static + nginx) — เหมาะกับการรันเพื่อเรียนรู้/
@@ -603,7 +699,8 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
 
 อยากลองต่อยอดโปรเจกต์นี้เพื่อฝึกฝีมือเพิ่ม ลองทำสิ่งเหล่านี้:
 
-- เพิ่ม WebAuthn/Passkey เป็นอีกตัวเลือกของ 2FA (นอกจาก TOTP)
+- เพิ่ม conditional UI ของ passkey (`autocomplete="username webauthn"` + `useBrowserAutofill`) ให้ browser เสนอ passkey
+  ในช่อง email เอง และส่ง Signal API (`PublicKeyCredential.signalUnknownCredential`) ให้ authenticator ลบ passkey ที่ถูกลบฝั่ง server แล้ว
 - ย้าย rate limiter ไปใช้ Redis เพื่อรองรับหลาย instance
 - เพิ่มหน้า "sessions ที่ active อยู่" ให้ผู้ใช้เห็นและ revoke refresh token ของตัวเองได้เป็นรายตัว
 - ทำ `vite build` + nginx multi-stage Dockerfile สำหรับ production
@@ -611,7 +708,7 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
   ของ provider นั้น)
 - เพิ่ม automated smoke test สำหรับ Keycloak variant ด้วย headless browser (Playwright) ให้ CI ครอบคลุม
   ทั้ง 2 docker-compose variant
-- บังคับ step-up (ใส่โค้ด TOTP อีกครั้ง) ก่อนเปลี่ยนรหัสผ่านด้วย (ตอนนี้บังคับแล้วเฉพาะ regenerate backup codes)
+- บังคับ step-up (ใส่โค้ด TOTP อีกครั้ง) ก่อนเปลี่ยนรหัสผ่านด้วย (ตอนนี้บังคับแล้วเฉพาะ regenerate backup codes และการเพิ่ม passkey)
 - เพิ่ม Dependabot ต่อจาก pipeline ที่มีอยู่ใน [CI-CD.md](CI-CD.md) (container image scanning ด้วย
   Trivy มีอยู่แล้ว)
 

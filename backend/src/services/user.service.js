@@ -81,6 +81,8 @@ export async function resetTwoFactor(id) {
     [id],
   );
   await pool.query('DELETE FROM backup_codes WHERE user_id = $1', [id]);
+  // A 2FA reset means "lost the device" - the passkeys may be on that device.
+  await pool.query('DELETE FROM webauthn_credentials WHERE user_id = $1', [id]);
 }
 
 // Atomically records `step` as the last accepted TOTP time-step, but only if it

@@ -7,6 +7,7 @@ import { env } from './config/env.js';
 import authRoutes from './routes/auth.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import ssoRoutes from './routes/sso.routes.js';
+import passkeyRoutes from './routes/passkey.routes.js';
 import { notFoundHandler, errorHandler } from './middleware/error.middleware.js';
 
 export const app = express();
@@ -39,6 +40,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/sso', ssoRoutes);
+app.use('/api/auth/passkeys', passkeyRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.use(notFoundHandler);

@@ -4,8 +4,11 @@
 # same sequence used to validate this app by hand during development:
 # forced setup -> backup codes -> session -> password change ends other
 # sessions -> refresh-token reuse detection -> TOTP replay rejected -> backup
-# codes are single-use -> backup-code regeneration needs TOTP step-up -> RBAC 403 for a plain user -> logout -> 401 ->
-# per-account 2FA lockout. Exits non-zero on the first assertion failure.
+# codes are single-use -> backup-code regeneration needs TOTP step-up -> passkey
+# endpoints (step-up, single-use challenges, no verify without a challenge) ->
+# RBAC 403 for a plain user -> logout -> 401 -> per-account 2FA lockout.
+# The positive passkey ceremonies need a real authenticator and are covered by
+# e2e/ui-test.mjs (Chromium's virtual authenticator). Exits non-zero on the first assertion failure.
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:5173}"
@@ -139,6 +142,34 @@ STATUS=$(regenerate_codes "$(totp_code "$SECRET")")
 [ "$STATUS" = "200" ] || fail "expected 200 regenerating backup codes with a valid TOTP code, got $STATUS"
 pass "backup codes regenerated after TOTP step-up"
 
+echo "--- passkeys: step-up, single-use challenges ---"
+FAKE_ASSERTION='{"credential":{"id":"AAAA","rawId":"AAAA","type":"public-key","response":{"clientDataJSON":"AAAA","authenticatorData":"AAAA","signature":"AAAA"},"clientExtensionResults":{}}}'
+# Every failed request to a twoFaLimiter route (10 per 5 min per IP) counts
+# toward the lockout section's budget at the end - keep additions off it.
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/api/auth/passkeys")
+[ "$STATUS" = "401" ] || fail "expected 401 listing passkeys without a session, got $STATUS"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -b admin_cookies.txt -H "Content-Type: application/json" \
+  -d "{\"code\":\"$BACKUP_CODE_3\"}" "$BASE_URL/api/auth/passkeys/register/options")
+[ "$STATUS" = "400" ] || fail "expected 400 starting passkey registration with a backup code instead of TOTP, got $STATUS"
+pass "adding a passkey needs a session plus TOTP step-up"
+
+OPTIONS=$(curl -s -c passkey_cookies.txt -X POST "$BASE_URL/api/auth/passkeys/login/options")
+[ "$(echo "$OPTIONS" | json_get userVerification)" = "required" ] || fail "passwordless options must require user verification: $OPTIONS"
+[ -n "$(echo "$OPTIONS" | json_get challenge)" ] || fail "no challenge in passwordless options: $OPTIONS"
+pass "passwordless login options demand user verification"
+
+verify_passkey_login() {
+  curl -s -b passkey_cookies.txt -H "Content-Type: application/json" -d "$FAKE_ASSERTION" \
+    "$BASE_URL/api/auth/passkeys/login/verify" | json_get error
+}
+[ "$(verify_passkey_login)" = "Passkey sign-in failed" ] || fail "unknown passkey credential was not rejected"
+[ "$(verify_passkey_login)" = "Passkey request expired, please try again" ] || fail "a consumed passkey challenge was accepted a second time"
+pass "unknown credential rejected, and its challenge cannot be reused"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H "Content-Type: application/json" -d "$FAKE_ASSERTION" \
+  "$BASE_URL/api/auth/passkeys/login/verify")
+[ "$STATUS" = "401" ] || fail "expected 401 verifying a passkey with no challenge cookie, got $STATUS"
+pass "passkey verify without a started ceremony is rejected"
+
 echo "--- RBAC: admin creates a plain user, plain user is denied admin routes ---"
 TEST_EMAIL="smoketest-$(date +%s 2>/dev/null || echo static)@example.com"
 CREATE=$(curl -s -b admin_cookies.txt -c admin_cookies.txt -H "Content-Type: application/json" \
@@ -175,6 +206,11 @@ rm -f user_cookies.txt
 curl -s -c user_cookies.txt -H "Content-Type: application/json" \
   -d "{\"email\":\"$TEST_EMAIL\",\"password\":\"TempPass123\"}" "$BASE_URL/api/auth/login" \
   | json_get stage | grep -q verify_required || fail "expected verify_required for the plain user"
+METHODS=$(curl -s -b user_cookies.txt "$BASE_URL/api/auth/passkeys/2fa/methods")
+[ "$(echo "$METHODS" | json_get passkey)" = "false" ] || fail "user without passkeys should not be offered one: $METHODS"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -b user_cookies.txt -X POST "$BASE_URL/api/auth/passkeys/2fa/options")
+[ "$STATUS" = "400" ] || fail "expected 400 asking for passkey 2FA options with no passkeys, got $STATUS"
+pass "verify stage only offers a passkey to accounts that have one"
 for _ in 1 2 3 4 5; do
   curl -s -o /dev/null -b user_cookies.txt -H "Content-Type: application/json" \
     -d '{"code":"ZZZZ-ZZZZ"}' "$BASE_URL/api/auth/2fa/verify"

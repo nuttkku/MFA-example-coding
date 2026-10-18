@@ -36,6 +36,19 @@ export const api = {
     request('/auth/change-password', { method: 'POST', body: { currentPassword, newPassword } }),
   regenerateBackupCodes: (code) => request('/auth/2fa/backup-codes/regenerate', { method: 'POST', body: { code } }),
 
+  passkeys: {
+    list: () => request('/auth/passkeys'),
+    registerOptions: (code) => request('/auth/passkeys/register/options', { method: 'POST', body: { code } }),
+    registerVerify: (name, credential) =>
+      request('/auth/passkeys/register/verify', { method: 'POST', body: { name, credential } }),
+    remove: (id) => request(`/auth/passkeys/${id}`, { method: 'DELETE' }),
+    loginOptions: () => request('/auth/passkeys/login/options', { method: 'POST' }),
+    loginVerify: (credential) => request('/auth/passkeys/login/verify', { method: 'POST', body: { credential } }),
+    twoFactorMethods: () => request('/auth/passkeys/2fa/methods'),
+    twoFactorOptions: () => request('/auth/passkeys/2fa/options', { method: 'POST' }),
+    twoFactorVerify: (credential) => request('/auth/passkeys/2fa/verify', { method: 'POST', body: { credential } }),
+  },
+
   sso: {
     listProviders: () => request('/auth/sso/providers'),
     // Not a fetch - a real page navigation, since the browser itself has to

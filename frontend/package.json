@@ -10,6 +10,7 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^14.0.0",
     "svelte-spa-router": "^5.1.1"
   },
   "devDependencies": {

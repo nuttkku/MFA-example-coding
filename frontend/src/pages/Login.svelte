@@ -3,6 +3,8 @@
   import { onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { api, ApiError } from '../lib/api.js';
+  import { authStore } from '../lib/stores/auth.js';
+  import { passkeysSupported, signInWithPasskey, passkeyErrorMessage } from '../lib/passkeys.js';
 
   const SSO_ERROR_MESSAGES = {
     unknown_provider: 'That sign-in method is not available.',
@@ -16,6 +18,7 @@
   let error = $state('');
   let loading = $state(false);
   let providers = $state([]);
+  const showPasskey = passkeysSupported();
 
   onMount(async () => {
     const hash = window.location.hash;
@@ -53,12 +56,31 @@
       loading = false;
     }
   }
+
+  // Passwordless: a passkey verified with biometric/PIN is already
+  // multi-factor, so a successful one goes straight to a full session.
+  async function handlePasskey() {
+    error = '';
+    loading = true;
+    try {
+      const result = await signInWithPasskey();
+      await authStore.refresh();
+      push(result.mustChangePassword ? '/change-password' : '/dashboard');
+    } catch (err) {
+      error = passkeyErrorMessage(err, 'Passkey sign-in failed. Please try again.');
+    } finally {
+      loading = false;
+    }
+  }
 </script>
 
 <div class="page page-narrow">
   <div class="card">
     <h1>Sign in</h1>
-    <p class="subtitle">Every account requires a second verification step after your password.</p>
+    <p class="subtitle">
+      Every account requires a second verification step after your password - or sign in with a
+      passkey, which verifies both factors at once.
+    </p>
 
     {#if error}
       <div class="alert alert-error">{error}</div>
@@ -77,6 +99,12 @@
         {loading ? 'Signing in…' : 'Continue'}
       </button>
     </form>
+
+    {#if showPasskey}
+      <button class="btn btn-secondary btn-block" type="button" style="margin-top:0.75rem;" onclick={handlePasskey} disabled={loading}>
+        Sign in with a passkey
+      </button>
+    {/if}
 
     {#if providers.length > 0}
       <div class="stack" style="margin-top:1.25rem; padding-top:1.25rem; border-top:1px solid var(--color-border);">

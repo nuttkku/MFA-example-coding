@@ -90,7 +90,7 @@ export const login = asyncHandler(async (req, res) => {
 // issued, up to PRE_AUTH_TOKEN_TTL ago - re-check the account is still usable
 // (not deleted/disabled by an admin in the meantime, not 2FA-locked) before
 // letting it finish the 2FA step and receive a full session.
-async function loadPreAuthUser(req) {
+export async function loadPreAuthUser(req) {
   const user = await findById(req.preAuthUserId);
   if (!user) throw new UnauthorizedError('2FA session expired, please log in again');
   if (user.status === 'disabled') {
@@ -102,7 +102,7 @@ async function loadPreAuthUser(req) {
   return user;
 }
 
-async function recordTwoFactorFailure(req, user, eventType) {
+export async function recordTwoFactorFailure(req, user, eventType) {
   await recordFailedTwoFactor(user.id, {
     maxAttempts: env.TWOFA_MAX_ATTEMPTS,
     lockMinutes: env.TWOFA_LOCK_MINUTES,
@@ -235,13 +235,12 @@ export const changePassword = asyncHandler(async (req, res) => {
   res.json({ ok: true });
 });
 
-// Step-up: a session alone is not enough to mint a fresh set of backup codes -
-// they are long-lived 2FA bypass credentials, so a stolen session cookie must
-// not be able to turn itself into permanent 2FA access. Require a current TOTP
-// code (not a backup code: the point is to prove possession of the device).
-// Failures count toward the same per-account 2FA lockout as login.
-export const regenerateBackupCodes = asyncHandler(async (req, res) => {
-  const { code } = twoFaCodeSchema.parse(req.body);
+// Step-up for actions that mint a long-lived way past 2FA (backup codes, a new
+// passkey): a session alone is not enough, or a stolen session cookie could
+// turn itself into permanent 2FA access. Requires a current TOTP code (not a
+// backup code: the point is to prove possession of the device). Failures count
+// toward the same per-account 2FA lockout as login.
+export async function requireTotpStepUp(req, code, failureEventType) {
   const user = req.user;
 
   if (!user.totp_enabled || !user.totp_secret_enc) {
@@ -254,10 +253,15 @@ export const regenerateBackupCodes = asyncHandler(async (req, res) => {
   const valid = !looksLikeBackupCode(code)
     && await verifyTotpCode(user.id, decryptStoredSecret(user.totp_secret_enc), code);
   if (!valid) {
-    await recordTwoFactorFailure(req, user, 'backup_codes_regenerate_failed');
+    await recordTwoFactorFailure(req, user, failureEventType);
     throw new ValidationError('Invalid verification code');
   }
   await resetFailedTwoFactor(user.id);
+}
+
+export const regenerateBackupCodes = asyncHandler(async (req, res) => {
+  const { code } = twoFaCodeSchema.parse(req.body);
+  await requireTotpStepUp(req, code, 'backup_codes_regenerate_failed');
 
   const backupCodes = await issueBackupCodes(req.user.id);
   await recordEvent({ userId: req.user.id, eventType: 'backup_codes_regenerated', ipAddress: req.ip });

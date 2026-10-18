@@ -9,6 +9,7 @@ export const COOKIE_NAMES = {
   access: 'access_token',
   refresh: 'refresh_token',
   ssoState: 'sso_state',
+  webauthnChallenge: 'webauthn_challenge',
 };
 
 const SSO_STATE_TTL = '10m';
@@ -97,6 +98,22 @@ export function verifySsoStateCookie(req, expectedProvider) {
 
 export function clearSsoStateCookie(res) {
   res.clearCookie(COOKIE_NAMES.ssoState, COOKIE_BASE);
+}
+
+// --- WebAuthn challenge: only the id of a server-side webauthn_challenges row
+// (a random UUID), not the challenge itself, so it needs no signing secret -
+// the row is bound to a purpose/user and deleted on first use, which a
+// self-contained signed cookie could not enforce.
+export function issueWebauthnChallengeCookie(res, challengeId, maxAge) {
+  res.cookie(COOKIE_NAMES.webauthnChallenge, challengeId, { ...COOKIE_BASE, maxAge });
+}
+
+export function readWebauthnChallengeCookie(req) {
+  return req.cookies[COOKIE_NAMES.webauthnChallenge] ?? null;
+}
+
+export function clearWebauthnChallengeCookie(res) {
+  res.clearCookie(COOKIE_NAMES.webauthnChallenge, COOKIE_BASE);
 }
 
 // --- Access token: short-lived, used to authenticate normal API calls.
