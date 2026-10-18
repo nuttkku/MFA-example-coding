@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:26-alpine
 
 # Picks up OS package security patches released after this base image was
 # published (e.g. an OpenSSL fix) instead of relying solely on whatever was
