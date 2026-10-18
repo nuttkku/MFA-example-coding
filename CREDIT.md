@@ -28,6 +28,8 @@
 | [cors](https://github.com/expressjs/cors) | CORS middleware |
 | [cookie-parser](https://github.com/expressjs/cookie-parser) | อ่าน cookie จาก request |
 | [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit) | Rate limit endpoint login/2FA |
+| [rate-limit-redis](https://github.com/express-rate-limit/rate-limit-redis) + [node-redis](https://github.com/redis/node-redis) | (optional) เก็บ counter ของ rate limiter ใน Redis เมื่อตั้ง `REDIS_URL` |
+| [Redis](https://redis.io) | (optional) ใน `docker-compose.redis.yml` |
 | [morgan](https://github.com/expressjs/morgan) | HTTP request logging |
 | [dotenv](https://github.com/motdotla/dotenv) | โหลดตัวแปรจากไฟล์ `.env` |
 | [nodemon](https://nodemon.io) | Auto-restart backend ตอนพัฒนา |
