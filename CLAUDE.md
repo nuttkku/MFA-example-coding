@@ -50,8 +50,8 @@ README หัวข้อ "ย้ายจากชื่อเดิม" ชื
 ```
 docker-compose.yml
 ├── postgres   (postgres:16-alpine, มี healthcheck)
-├── backend    (Node 20-alpine, Express, รันด้วย nodemon)
-└── frontend   (Node 20-alpine, Vite dev server)
+├── backend    (Node 26-alpine, Express, รันด้วย nodemon)
+└── frontend   (Node 26-alpine, Vite dev server)
 
 docker-compose.keycloak.yml   (addon - รันคู่กับไฟล์บนเสมอ ไม่รันเดี่ยว)
 ├── keycloak   (quay.io/keycloak/keycloak, --import-realm จาก keycloak/realm-export.json)
