@@ -735,8 +735,7 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
   จนล็อก SSO ของเหยื่อไปด้วย) ดูเหตุผลเต็มใน [CLAUDE.md](CLAUDE.md)
 - Frontend เป็น Vite dev server ตรง ๆ (ไม่ได้ build เป็น static + nginx) — เหมาะกับการรันเพื่อเรียนรู้/
   พัฒนา ถ้าจะ deploy จริงควร `vite build` แล้ว serve ผ่าน web server ที่เหมาะสม
-- CI ไม่ได้ทดสอบ Keycloak variant แบบ automated (ต้อง mock ฟอร์ม login ของ Keycloak) — ทดสอบมือแบบ
-  end-to-end ไปแล้วตอนพัฒนา ดู [CI-CD.md](CI-CD.md)
+- CI ทดสอบ SSO อัตโนมัติเฉพาะ Keycloak (job `keycloak-test`) — Facebook/LINE ต้องใช้บัญชีจริงของ provider จึงทดสอบมือเท่านั้น
 
 ## 🌱 แนวทางต่อยอด
 
@@ -749,8 +748,6 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
 - ทำ `vite build` + nginx multi-stage Dockerfile สำหรับ production
 - เพิ่ม Google/Microsoft/GitHub ผ่าน config `OIDC_*` เดิม (ไม่ต้องเขียนโค้ดใหม่ แค่ใส่ issuer/client id
   ของ provider นั้น)
-- เพิ่ม automated smoke test สำหรับ Keycloak variant ด้วย headless browser (Playwright) ให้ CI ครอบคลุม
-  ทั้ง 2 docker-compose variant
 - บังคับ step-up (ใส่โค้ด TOTP อีกครั้ง) ก่อนเปลี่ยนรหัสผ่านด้วย (ตอนนี้บังคับแล้วเฉพาะ regenerate backup codes และการเพิ่ม passkey)
 - เพิ่ม Dependabot ต่อจาก pipeline ที่มีอยู่ใน [CI-CD.md](CI-CD.md) (container image scanning ด้วย
   Trivy มีอยู่แล้ว)

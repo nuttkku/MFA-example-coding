@@ -5,7 +5,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "node ui-test.mjs"
+    "test": "node ui-test.mjs",
+    "test:keycloak": "node keycloak-test.mjs"
   },
   "devDependencies": {
     "otplib": "^12.0.1",

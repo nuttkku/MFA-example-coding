@@ -440,8 +440,8 @@ setup บังคับเหมือนบัญชีอื่นทุก�
 - **Account lockout ไม่ครอบคลุม SSO login** (ดูเหตุผลเต็มในหัวข้อ SSO ด้านบน) — ตั้งใจ ไม่ใช่ช่องโหว่ที่ลืมปิด (เช่นเดียวกับ passkey login)
 - **ไม่มีบัญชีแบบ passkey อย่างเดียว** — ต้องตั้ง TOTP ก่อนลงทะเบียน passkey ได้ เพื่อให้มีทางกู้บัญชีเสมอ และยังไม่ทำ
   conditional UI (passkey autofill) / Signal API ให้ frontend เรียบง่าย
-- CI (`ci.yml`) รันแค่ variant ไม่มี Keycloak — ไม่ได้ตัดทิ้งเพราะมองว่า Keycloak flow ไม่สำคัญ แต่เพราะ
-  ต้อง mock ฟอร์ม login ของ Keycloak ถึงจะ automate ได้ (ดู [CI-CD.md](CI-CD.md))
+- *(เดิม: CI ไม่ทดสอบ Keycloak — ตอนนี้มี job `keycloak-test` ใช้ Playwright กรอกฟอร์ม Keycloak จริงแล้ว ดู [CI-CD.md](CI-CD.md))*
+  ส่วน Facebook/LINE ยังทดสอบอัตโนมัติไม่ได้ (ต้องใช้บัญชีจริงของ provider)
 
 ## ผลการสแกนความปลอดภัย
 
