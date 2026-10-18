@@ -25,7 +25,7 @@
         it. Store them somewhere safe - they will not be shown again.
       </p>
       <div class="backup-codes-grid">
-        {#each $pendingBackupCodes.codes as backupCode}
+        {#each $pendingBackupCodes.codes as backupCode (backupCode)}
           <div>{backupCode}</div>
         {/each}
       </div>

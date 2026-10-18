@@ -9,7 +9,9 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "migrate": "node src/db/migrate.js",
-    "seed": "node src/db/seed.js"
+    "seed": "node src/db/seed.js",
+    "test": "node --test --import ./test/setup.js",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@simplewebauthn/server": "^14.0.3",
@@ -30,6 +32,9 @@
     "zod": "^4.6.6"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0",
     "nodemon": "^3.1.4"
   },
   "overrides": {

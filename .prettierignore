@@ -1,0 +1,10 @@
+node_modules/
+dist/
+skills/
+.claude/
+*.md
+*.svelte
+*.html
+*.json
+*.yml
+*.sql
