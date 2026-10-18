@@ -30,7 +30,7 @@ Facebook / LINE / Keycloak / OpenID Connect ทั่วไป — เขีย�
 - [ข้อจำกัดที่ตั้งใจไว้](#-ข้อจำกัดที่ตั้งใจไว้)
 - [แนวทางต่อยอด](#-แนวทางต่อยอด)
 - [วิธีนำ repo และ skills ไปใช้ต่อ](#-วิธีนำ-repo-และ-skills-ไปใช้ต่อ)
-- [Credits](#-credits)
+- [Credits](#-credits) · [รายงานช่องโหว่ (SECURITY.md)](SECURITY.md)
 
 ## 🛠 เทคโนโลยีที่ใช้
 
@@ -790,7 +790,7 @@ docker run --rm --network container:<ชื่อ frontend container> -e BASE_UR
 
 ### ใช้เฉพาะบางส่วนผ่าน Skills
 
-> 🗺 ภาพรวมทุก feature ที่หยิบไปใช้ได้ (ขั้นตอน, กติกาที่ห้ามพลาด, ไฟล์ที่ต้องดู, skill ที่ตรงกัน) อยู่ที่ [docs/features-canvas.html](docs/features-canvas.html) — เปิดไฟล์นี้ในเบราว์เซอร์ได้เลย ไม่ต้อง build
+> 🗺 ภาพรวมทุก feature ที่หยิบไปใช้ได้ (ขั้นตอน, กติกาที่ห้ามพลาด, ไฟล์ที่ต้องดู, skill ที่ตรงกัน) อยู่ที่ [docs/features-canvas.html](docs/features-canvas.html) — เปิดออนไลน์ได้ที่ <https://nuttkku.github.io/MFA-example-coding/> หรือเปิดไฟล์ในเครื่องก็ได้ ไม่ต้อง build
 
 ตัวอย่างแต่ละส่วนถูกสกัดเป็น Claude Code skill ที่ [skills/](skills/README.md) — แต่ละโฟลเดอร์มี `SKILL.md`
 (กฎการออกแบบ + จุดที่เคยพลาดจริง) และ `reference/` (ไฟล์ source จริงให้ copy ไปปรับ):
@@ -807,7 +807,7 @@ docker run --rm --network container:<ชื่อ frontend container> -e BASE_UR
 | `svelte5-spa-auth-frontend` | Svelte 5 + Vite 8, guard, หน้า 2FA |
 | `docker-compose-dev-stack` | Postgres + Express + Vite + Keycloak ด้วย compose |
 
-ติดตั้ง skill ให้ Claude Code:
+clone repo นี้แล้วเปิด Claude Code ในโฟลเดอร์ ทุก skill ใช้ได้ทันที (มีสำเนาอยู่ใน `.claude/skills/`) ถ้าจะใช้ในโปรเจกต์อื่น:
 
 ```bash
 cp -r skills/forced-totp-2fa ~/.claude/skills/                 # ส่วนตัว (ทุกโปรเจกต์)

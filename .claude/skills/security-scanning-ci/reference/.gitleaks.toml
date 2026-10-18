@@ -1,0 +1,15 @@
+title = "gitleaks config"
+
+[extend]
+useDefault = true
+
+# The smoke test builds curl bodies from a TOTP code it generates at runtime;
+# gitleaks' entropy heuristic reads that as a "generic-api-key". Reviewed: no
+# credential is committed. Scoped to this rule and these two files only.
+[[allowlists]]
+description = "smoke-test.sh curl bodies (runtime-generated TOTP codes)"
+targetRules = ["generic-api-key"]
+paths = [
+  '''scripts/smoke-test\.sh''',
+  '''skills/security-scanning-ci/reference/smoke-test\.sh''',
+]

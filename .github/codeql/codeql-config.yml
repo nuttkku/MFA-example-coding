@@ -1,0 +1,7 @@
+name: codeql-config
+
+# skills/*/reference and .claude/skills/*/reference are snapshot copies of the
+# real source (see CLAUDE.md); scanning them only produces duplicate alerts.
+paths-ignore:
+  - skills
+  - .claude/skills
