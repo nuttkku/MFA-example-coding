@@ -45,6 +45,26 @@ jobs:
               --error \
               /src
 
+  osv-scan:
+    name: OSV-Scanner (dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan lockfiles against the OSV database
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/src" ghcr.io/google/osv-scanner:latest             scan source -r /src
+
+  secret-scan:
+    name: Gitleaks (secrets in git history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" zricethezav/gitleaks:latest             detect --source /repo --no-banner --redact
+
   build:
     name: Build Docker images
     runs-on: ubuntu-latest

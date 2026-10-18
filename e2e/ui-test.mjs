@@ -28,12 +28,13 @@ const browser = await chromium.launch(
 );
 const page = await browser.newPage();
 
-// 401 (/auth/me before login), 404 (/favicon.ico) and 400 (deliberately wrong
-// codes below) are expected; anything else in the console is a failure.
+// 401 (/auth/me before login, rejected passkeys), 404 (/favicon.ico), 400
+// (deliberately wrong codes below) and 403 (passkey sign-in to a disabled
+// account) are expected; anything else in the console is a failure.
 const unexpectedErrors = [];
 page.on('pageerror', (err) => unexpectedErrors.push(`pageerror: ${err.message}`));
 page.on('console', (msg) => {
-  if (msg.type() === 'error' && !/status of (400|401|404)/.test(msg.text())) {
+  if (msg.type() === 'error' && !/status of (400|401|403|404)/.test(msg.text())) {
     unexpectedErrors.push(`console: ${msg.text()}`);
   }
 });
@@ -168,7 +169,7 @@ for (let i = 0; i < 20; i += 1) {
   newUserTempPassword = await page.inputValue('#reset-password');
   await page.click('.modal button[type=submit]');
   await page.waitForSelector('.modal', { state: 'detached', timeout: 10000 }).catch(() => {});
-  if ((await page.locator('.modal').count()) !== 0) await fail(`generated temporary password rejected: ${newUserTempPassword}`);
+  if ((await page.locator('.modal').count()) !== 0) await fail(`generated temporary password was rejected by the form`);
 }
 pass('20 generated temporary passwords all accepted');
 
@@ -205,15 +206,119 @@ await expectRoute('#/dashboard', 'backup code completes 2FA');
 await page.click('button:has-text("Log out")');
 await expectRoute('#/login', 'logged out');
 
+console.log('--- admin: passkeys (Chromium virtual authenticator) ---');
+// A CTAP2 platform authenticator with resident keys and user verification
+// that auto-approves - the same thing Touch ID / Windows Hello would do.
+const cdp = await page.context().newCDPSession(page);
+await cdp.send('WebAuthn.enable');
+const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+  options: {
+    protocol: 'ctap2',
+    transport: 'internal',
+    hasResidentKey: true,
+    hasUserVerification: true,
+    isUserVerified: true,
+    automaticPresenceSimulation: true,
+  },
+});
+
+await login(ADMIN_EMAIL, ADMIN_NEW_PASSWORD);
+await expectRoute('#/2fa/verify', 'password login goes to 2FA verify');
+await page.waitForTimeout(500);
+if ((await page.locator('button:has-text("Use a passkey instead")').count()) !== 0) {
+  await fail('passkey offered at verify before any passkey was registered');
+}
+pass('no passkey offered before one is registered');
+await page.fill('#code', regenerated[1]);
+await page.click('button[type=submit]');
+await expectRoute('#/dashboard', 'second backup code completes 2FA');
+
+await page.click('a[href="#/profile"]');
+await expectRoute('#/profile', 'profile page');
+await check(page.waitForSelector('text=No passkeys yet.'), 'profile lists no passkeys');
+await page.fill('#passkey-name', 'UI test key');
+await page.fill('#passkey-code', '000000');
+await page.click('button:has-text("Add a passkey")');
+await check(page.waitForSelector('.alert-error:has-text("Invalid")'), 'adding a passkey with a wrong TOTP code is refused');
+await waitForNextTotpStep();
+await page.fill('#passkey-code', authenticator.generate(adminSecret));
+await page.click('button:has-text("Add a passkey")');
+await check(page.waitForSelector('.alert-success:has-text("Passkey added")'), 'passkey registered after TOTP step-up');
+await check(page.waitForSelector('td:has-text("UI test key")'), 'new passkey listed on the profile');
+
+await page.click('button:has-text("Log out")');
+await expectRoute('#/login', 'logged out');
+await page.click('button:has-text("Sign in with a passkey")');
+await expectRoute('#/dashboard', 'passwordless passkey sign-in goes straight to the dashboard');
+await page.click('button:has-text("Log out")');
+await expectRoute('#/login', 'logged out');
+
+await login(ADMIN_EMAIL, ADMIN_NEW_PASSWORD);
+await expectRoute('#/2fa/verify', 'password login goes to 2FA verify');
+await page.click('button:has-text("Use a passkey instead")');
+await expectRoute('#/dashboard', 'passkey completes the 2FA step after a password');
+
+await page.click('a[href="#/profile"]');
+await expectRoute('#/profile', 'profile page');
+await page.click('td button:has-text("Remove")');
+await check(page.waitForSelector('text=No passkeys yet.'), 'passkey removed');
+await page.click('button:has-text("Log out")');
+await expectRoute('#/login', 'logged out');
+// The virtual authenticator still holds the private key - the server must
+// refuse it now that the credential is gone.
+await page.click('button:has-text("Sign in with a passkey")');
+await check(page.waitForSelector('.alert-error:has-text("Passkey sign-in failed")'), 'removed passkey can no longer sign in');
+
 console.log('--- plain user: forced setup, RBAC ---');
 await login(NEW_USER_EMAIL, newUserTempPassword);
 await expectRoute('#/2fa/setup', 'new user (2FA reset) is forced into setup');
-await completeSetup();
+const userSecret = await completeSetup();
 await changePassword(newUserTempPassword, NEW_USER_PASSWORD);
 if ((await page.locator('a[href="#/admin/users"]').count()) !== 0) await fail('plain user sees the Users link');
 pass('navbar hides admin links from a plain user');
 await page.goto(`${BASE_URL}/#/admin/audit-logs`);
 await expectRoute('#/unauthorized', 'RBAC guard sends a plain user to /unauthorized');
+
+console.log('--- plain user passkey: disabled account, admin 2FA reset ---');
+// Only this user's passkey on the authenticator from here on.
+await cdp.send('WebAuthn.clearCredentials', { authenticatorId });
+await page.click('a[href="#/profile"]');
+await expectRoute('#/profile', 'profile page');
+await waitForNextTotpStep();
+await page.fill('#passkey-name', 'User key');
+await page.fill('#passkey-code', authenticator.generate(userSecret));
+await page.click('button:has-text("Add a passkey")');
+await check(page.waitForSelector('.alert-success:has-text("Passkey added")'), 'plain user registered a passkey');
+await page.click('button:has-text("Log out")');
+await expectRoute('#/login', 'logged out');
+
+// The admin works in a separate browser context, so both sessions coexist.
+const adminPage = await browser.newPage();
+adminPage.on('dialog', (dialog) => dialog.accept());
+await adminPage.goto(`${BASE_URL}/#/login`);
+await adminPage.fill('#email', ADMIN_EMAIL);
+await adminPage.fill('#password', ADMIN_NEW_PASSWORD);
+await adminPage.click('button[type=submit]');
+await adminPage.waitForURL((url) => url.hash.startsWith('#/2fa/verify'));
+await adminPage.fill('#code', authenticator.generate(adminSecret));
+await adminPage.click('button[type=submit]');
+await adminPage.waitForURL((url) => url.hash.startsWith('#/dashboard'));
+await adminPage.goto(`${BASE_URL}/#/admin/users`);
+const userRow = adminPage.locator('tr', { has: adminPage.locator('td', { hasText: NEW_USER_EMAIL }) });
+await userRow.locator('button:has-text("Disable")').click();
+await check(userRow.locator('.badge-disabled').waitFor(), 'admin disabled the plain user');
+
+await page.click('button:has-text("Sign in with a passkey")');
+await check(page.waitForSelector('.alert-error:has-text("disabled")'), 'disabled account cannot sign in with a passkey');
+
+await userRow.locator('button:has-text("Enable")').click();
+await check(userRow.locator('.badge-active').waitFor(), 'admin re-enabled the plain user');
+await userRow.locator('button:has-text("Reset 2FA")').click();
+await check(adminPage.waitForSelector('.alert-success:has-text("2FA reset")'), "admin reset the plain user's 2FA");
+await adminPage.close();
+
+await page.click('button:has-text("Sign in with a passkey")');
+await check(page.waitForSelector('.alert-error:has-text("Passkey sign-in failed")'), "admin 2FA reset also removes the user's passkeys");
 
 if (unexpectedErrors.length) await fail(`unexpected browser errors:\n${unexpectedErrors.join('\n')}`);
 pass('no unexpected browser errors');

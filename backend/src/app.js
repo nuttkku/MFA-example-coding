@@ -7,8 +7,13 @@ import { env } from './config/env.js';
 import authRoutes from './routes/auth.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import ssoRoutes from './routes/sso.routes.js';
+import passkeyRoutes from './routes/passkey.routes.js';
+import { csrfProtection, csrfTokenHandler } from './middleware/csrf.middleware.js';
 import { notFoundHandler, errorHandler } from './middleware/error.middleware.js';
 
+// Snyk Code reports UseCsurfForExpress here: a name-based false positive (it only
+// recognises the deprecated csurf package). CSRF is enforced by csrf-csrf +
+// an Origin guard - see middleware/csrf.middleware.js and CLAUDE.md.
 export const app = express();
 
 function parseTrustProxy(value) {
@@ -31,14 +36,17 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json());
 app.use(cookieParser());
+app.get('/api/csrf-token', csrfTokenHandler);
+app.use(csrfProtection);
+app.use(express.json());
 app.use(morgan(env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/sso', ssoRoutes);
+app.use('/api/auth/passkeys', passkeyRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.use(notFoundHandler);

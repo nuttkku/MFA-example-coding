@@ -9,6 +9,7 @@ export const COOKIE_NAMES = {
   access: 'access_token',
   refresh: 'refresh_token',
   ssoState: 'sso_state',
+  webauthnChallenge: 'webauthn_challenge',
 };
 
 const SSO_STATE_TTL = '10m';
@@ -19,6 +20,18 @@ const COOKIE_BASE = {
   sameSite: 'lax',
   path: '/',
 };
+
+// Single place that sets a session-bearing cookie, so the security attributes
+// are written out literally right where the cookie is created.
+function setSecureCookie(res, name, value, maxAge) {
+  res.cookie(name, value, {
+    httpOnly: true,
+    secure: env.COOKIE_SECURE,
+    sameSite: 'lax',
+    path: '/',
+    maxAge,
+  });
+}
 
 // Pinned explicitly (rather than relying on jsonwebtoken's default algorithm
 // inference from the key type) so a token can never be verified under a
@@ -31,7 +44,9 @@ function sha256(value) {
 
 function signWithMaxAge(payload, secret, ttl) {
   const token = jwt.sign(payload, secret, { expiresIn: ttl, algorithm: JWT_ALGORITHM });
-  const { exp } = jwt.decode(token);
+  // Re-verify the token we just signed (rather than jwt.decode, which skips
+  // signature checks) to read back its expiry.
+  const { exp } = jwt.verify(token, secret, { algorithms: [JWT_ALGORITHM] });
   const maxAge = exp * 1000 - Date.now();
   return { token, maxAge };
 }
@@ -45,7 +60,7 @@ export function issuePreAuthCookie(res, userId, stage) {
     env.PRE_AUTH_TOKEN_SECRET,
     env.PRE_AUTH_TOKEN_TTL,
   );
-  res.cookie(COOKIE_NAMES.preAuth, token, { ...COOKIE_BASE, maxAge });
+  setSecureCookie(res, COOKIE_NAMES.preAuth, token, maxAge);
 }
 
 export function verifyPreAuthCookie(req, expectedStage) {
@@ -75,7 +90,7 @@ export function clearPreAuthCookie(res) {
 // confused with (or forged as) any of the other cookie types above.
 export function issueSsoStateCookie(res, statePayload) {
   const { token, maxAge } = signWithMaxAge({ ...statePayload, typ: 'sso_state' }, env.SSO_STATE_SECRET, SSO_STATE_TTL);
-  res.cookie(COOKIE_NAMES.ssoState, token, { ...COOKIE_BASE, maxAge });
+  setSecureCookie(res, COOKIE_NAMES.ssoState, token, maxAge);
 }
 
 export function verifySsoStateCookie(req, expectedProvider) {
@@ -99,6 +114,22 @@ export function clearSsoStateCookie(res) {
   res.clearCookie(COOKIE_NAMES.ssoState, COOKIE_BASE);
 }
 
+// --- WebAuthn challenge: only the id of a server-side webauthn_challenges row
+// (a random UUID), not the challenge itself, so it needs no signing secret -
+// the row is bound to a purpose/user and deleted on first use, which a
+// self-contained signed cookie could not enforce.
+export function issueWebauthnChallengeCookie(res, challengeId, maxAge) {
+  setSecureCookie(res, COOKIE_NAMES.webauthnChallenge, challengeId, maxAge);
+}
+
+export function readWebauthnChallengeCookie(req) {
+  return req.cookies[COOKIE_NAMES.webauthnChallenge] ?? null;
+}
+
+export function clearWebauthnChallengeCookie(res) {
+  res.clearCookie(COOKIE_NAMES.webauthnChallenge, COOKIE_BASE);
+}
+
 // --- Access token: short-lived, used to authenticate normal API calls.
 export function issueAccessCookie(res, user) {
   const { token, maxAge } = signWithMaxAge(
@@ -106,7 +137,7 @@ export function issueAccessCookie(res, user) {
     env.ACCESS_TOKEN_SECRET,
     env.ACCESS_TOKEN_TTL,
   );
-  res.cookie(COOKIE_NAMES.access, token, { ...COOKIE_BASE, maxAge });
+  setSecureCookie(res, COOKIE_NAMES.access, token, maxAge);
 }
 
 export function verifyAccessCookie(req) {
@@ -142,7 +173,7 @@ export async function issueRefreshCookie(res, userId, { ipAddress, userAgent } =
     [jti, userId, sha256(token), maxAge, ipAddress ?? null, userAgent ?? null],
   );
 
-  res.cookie(COOKIE_NAMES.refresh, token, { ...COOKIE_BASE, maxAge });
+  setSecureCookie(res, COOKIE_NAMES.refresh, token, maxAge);
   return jti;
 }
 

@@ -1,0 +1,6 @@
+version: v1.25.0
+# skills/*/reference are snapshot copies of the real source for people to lift into
+# their own projects; the real code under backend/ and frontend/ is what gets scanned.
+exclude:
+  code:
+    - skills/**

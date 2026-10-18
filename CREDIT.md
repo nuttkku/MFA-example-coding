@@ -22,6 +22,7 @@
 | [otplib](https://github.com/yeojz/otplib) | สร้าง/ตรวจโค้ด TOTP สำหรับ 2FA |
 | [qrcode](https://github.com/soldair/node-qrcode) | สร้าง QR code ตอนตั้ง 2FA |
 | [openid-client](https://github.com/panva/openid-client) | OIDC client (ใช้ร่วมกันสำหรับ Keycloak, LINE, generic OIDC) |
+| [@simplewebauthn/server](https://simplewebauthn.dev) | สร้าง options และตรวจ registration/authentication ของ passkey (WebAuthn, CBOR, COSE) |
 | [zod](https://zod.dev) | Validate request body / environment variables |
 | [helmet](https://helmetjs.github.io) | ตั้งค่า security header เริ่มต้น |
 | [cors](https://github.com/expressjs/cors) | CORS middleware |
@@ -38,6 +39,7 @@
 | [Svelte](https://svelte.dev) 5 | UI framework |
 | [Vite](https://vitejs.dev) | Dev server / build tool (รวมถึง dev proxy ไป backend) |
 | [@sveltejs/vite-plugin-svelte](https://github.com/sveltejs/vite-plugin-svelte) | ผนวก Svelte เข้ากับ Vite |
+| [@simplewebauthn/browser](https://simplewebauthn.dev) | เรียก WebAuthn API ของ browser (`navigator.credentials.create/get`) ตอนลงทะเบียน/ใช้ passkey |
 | [svelte-spa-router](https://github.com/ItalyPaleAle/svelte-spa-router) | Client-side routing แบบ hash-based |
 
 ## Identity Providers / SSO

@@ -7,6 +7,12 @@ export function notFoundHandler(req, res) {
 }
 
 export function errorHandler(err, req, res, next) {
+  // csrf-csrf's rejection: tagged so the frontend can tell it apart from other
+  // 403s (e.g. "account disabled") and refetch a token only when it should.
+  if (err.code === 'EBADCSRFTOKEN') {
+    return res.status(403).json({ error: 'Invalid CSRF token', code: 'csrf' });
+  }
+
   if (err instanceof ZodError) {
     return res.status(400).json({ error: 'Invalid request', details: err.issues });
   }

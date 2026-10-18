@@ -1,7 +1,7 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { hashSecret } from '../utils/password.js';
 import { ConflictError, NotFoundError } from '../utils/errors.js';
-import { createUserSchema, updateUserSchema, resetPasswordSchema, userIdParamSchema } from '../validators/schemas.js';
+import { createUserSchema, updateUserSchema, resetPasswordSchema, userIdParamSchema, listUsersQuerySchema } from '../validators/schemas.js';
 import {
   listUsers,
   createUser,
@@ -28,8 +28,8 @@ function parseUserId(req) {
 }
 
 export const getUsers = asyncHandler(async (req, res) => {
-  const search = typeof req.query.search === 'string' ? req.query.search : null;
-  const users = await listUsers({ search });
+  const { search } = listUsersQuerySchema.parse(req.query);
+  const users = await listUsers({ search: search ?? null });
   res.json({ users });
 });
 
@@ -110,7 +110,7 @@ export const postResetTwoFactor = asyncHandler(async (req, res) => {
 
   // Clearing totp_enabled/totp_secret_enc means the very next login this user
   // attempts drops back into the forced setup stage - there is no way to log
-  // in with 2FA left disabled.
+  // in with 2FA left disabled. Passkeys and backup codes go too.
   await resetTwoFactor(id);
   await revokeAllForUser(id);
 
