@@ -403,6 +403,9 @@ docker compose logs -f backend    # ดู log backend (migration/seed จะร
 docker compose down                # หยุด (เก็บ data ไว้) - ถ้ารันแบบมี Keycloak ต้องใส่ -f สองไฟล์เหมือนกัน
 docker compose down -v             # หยุด + ลบ volume postgres (รีเซ็ตฐานข้อมูลทั้งหมด)
 
+(cd backend && npm test && npm run lint)   # unit test (node:test, ไม่ต้องมี DB) + ESLint
+(cd frontend && npm run lint)              # ESLint + eslint-plugin-svelte
+npx prettier@3.9.10 --check .             # รูปแบบโค้ด .js (ดู .prettierignore)
 bash scripts/smoke-test.sh         # ยิง API จริงทดสอบ flow หลักทั้งหมด (ต้อง up -d ไว้ก่อน)
 (cd e2e && npm ci && npx playwright install chromium && node ui-test.mjs)   # ทดสอบผ่านหน้าเว็บจริง (ต้องใช้ DB ใหม่: down -v แล้ว up ก่อน)
 ```
@@ -622,6 +625,15 @@ dismiss ใน GitHub Code scanning แล้ว) และ `log-injection` ท�
 (3) Semgrep ใน container อาจสแกนแค่ไม่กี่ไฟล์ ให้ระบุ path แล้วดู `Targets scanned` (4) zod 4: `z.record(z.string(), z.unknown())`
 
 ## การทดสอบที่ทำไปแล้ว
+
+**Unit test (`backend/test/`, `node:test` ไม่มี dependency เพิ่ม)** — 35 test ไม่ต้องใช้ฐานข้อมูล (`test/setup.js` ตั้ง env
+ครบก่อน import ทุกครั้ง ไม่อ่าน `backend/.env` ของเครื่อง): AES-GCM + truncated tag, backup codes, RBAC matrix, token แต่ละประเภท
+ปลอมแทนกันไม่ได้ + `alg: none`/HS512 ถูกปฏิเสธ, CSRF origin guard + double-submit, error handler tag `code: 'csrf'`, log injection,
+schema (รวม zod 4 `z.record`) ส่วนที่แตะ DB (TOTP replay, refresh rotation, SSO linking) ยังทดสอบผ่าน smoke test เท่านั้น
+**ESLint 9** (flat config) ทั้ง backend/frontend ห้าม `{@html}` และ `eval` — รอบแรกจับ `{#each}` ที่ไม่มี key 3 จุด
+**Prettier** ใช้กับไฟล์ `.js` เท่านั้น (Svelte ต้องใช้ plugin เพิ่ม) จัดรูปแบบทั้ง repo ครั้งเดียวใน commit แยก แล้วรัน smoke + UI test ยืนยันว่าไม่เปลี่ยนพฤติกรรม
+CI job `quality` รันทั้งสามอย่าง
+
 
 Build และรันผ่าน `docker compose` จริงบน Docker Desktop (ทั้ง 2 variant: มี/ไม่มี Keycloak) แล้วทดสอบผ่าน
 `curl` ครบทุก flow หลัก — เขียนเป็น script อัตโนมัติแล้วที่ [scripts/smoke-test.sh](scripts/smoke-test.sh)

@@ -146,6 +146,7 @@ docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d --buil
 docker compose logs -f backend    # ดู log ของ API
 docker compose down               # หยุดทุก service (เก็บข้อมูลใน DB ไว้)
 docker compose down -v            # หยุด + ล้างฐานข้อมูลทั้งหมด (รอบต่อไปจะ seed admin/test user ใหม่)
+(cd backend && npm ci && npm test) # unit test (ไม่ต้องมีฐานข้อมูล/Docker)
 bash scripts/smoke-test.sh        # ทดสอบ flow หลักทั้งหมดแบบอัตโนมัติ (ต้องมีสแตกรันอยู่ก่อน)
 (cd e2e && npm ci && npx playwright install chromium && node ui-test.mjs)  # ทดสอบผ่านหน้าเว็บจริง (ใช้ DB ใหม่)
 ```
