@@ -1,20 +1,47 @@
 <script>
   import { preventDefault } from '../lib/events.js';
+  import { onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { api, ApiError } from '../lib/api.js';
   import { authStore } from '../lib/stores/auth.js';
+  import { passkeysSupported, verifyWithPasskey, passkeyErrorMessage } from '../lib/passkeys.js';
 
   let code = $state('');
   let error = $state('');
   let submitting = $state(false);
+  let passkeyAvailable = $state(false);
+
+  onMount(async () => {
+    if (!passkeysSupported()) return;
+    try {
+      passkeyAvailable = (await api.passkeys.twoFactorMethods()).passkey;
+    } catch {
+      passkeyAvailable = false;
+    }
+  });
+
+  async function finish(result) {
+    await authStore.refresh();
+    push(result.mustChangePassword ? '/change-password' : '/dashboard');
+  }
+
+  async function handlePasskey() {
+    error = '';
+    submitting = true;
+    try {
+      await finish(await verifyWithPasskey());
+    } catch (err) {
+      error = passkeyErrorMessage(err, 'Passkey verification failed.');
+    } finally {
+      submitting = false;
+    }
+  }
 
   async function handleSubmit() {
     error = '';
     submitting = true;
     try {
-      const result = await api.verifyTwoFactor(code);
-      await authStore.refresh();
-      push(result.mustChangePassword ? '/change-password' : '/dashboard');
+      await finish(await api.verifyTwoFactor(code));
     } catch (err) {
       error = err instanceof ApiError ? err.message : 'Invalid verification code.';
     } finally {
@@ -47,5 +74,11 @@
         {submitting ? 'Verifying…' : 'Verify'}
       </button>
     </form>
+
+    {#if passkeyAvailable}
+      <button class="btn btn-secondary btn-block" type="button" style="margin-top:0.75rem;" onclick={handlePasskey} disabled={submitting}>
+        Use a passkey instead
+      </button>
+    {/if}
   </div>
 </div>

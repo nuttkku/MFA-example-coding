@@ -28,7 +28,8 @@ export const createUserSchema = z.object({
   temporaryPassword: password,
 });
 
-export const userIdParamSchema = z.string().uuid();
+export const uuidSchema = z.string().uuid();
+export const userIdParamSchema = uuidSchema;
 
 export const updateUserSchema = z.object({
   role: z.enum(['admin', 'manager', 'user']).optional(),
@@ -41,4 +42,27 @@ export const resetPasswordSchema = z.object({
 
 export const listUsersQuerySchema = z.object({
   search: z.string().max(255).optional(),
+});
+
+// Shape-only check of a PublicKeyCredential serialised by @simplewebauthn/browser
+// (RegistrationResponseJSON / AuthenticationResponseJSON). Everything inside
+// `response` is verified cryptographically by @simplewebauthn/server; this just
+// rejects obviously malformed bodies before they reach it.
+const base64url = z.string().max(4096).regex(/^[A-Za-z0-9_-]*$/);
+const publicKeyCredential = z.object({
+  id: base64url.min(1).max(1024),
+  rawId: base64url.min(1).max(1024),
+  type: z.literal('public-key'),
+  response: z.record(z.string(), z.unknown()),
+  clientExtensionResults: z.record(z.string(), z.unknown()).default({}),
+  authenticatorAttachment: z.string().max(32).optional(),
+});
+
+export const passkeyRegisterSchema = z.object({
+  name: z.string().trim().min(1).max(64),
+  credential: publicKeyCredential,
+});
+
+export const passkeyAssertionSchema = z.object({
+  credential: publicKeyCredential,
 });

@@ -19,3 +19,13 @@ export const twoFaLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many verification attempts, please try again later.' },
 });
+
+// Starting a passkey ceremony is cheap and reveals nothing, but each call
+// stores a challenge row - cap it per IP so nobody can fill that table.
+export const passkeyOptionsLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many passkey requests, please try again later.' },
+});

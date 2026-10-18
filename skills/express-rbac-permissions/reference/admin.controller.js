@@ -110,7 +110,7 @@ export const postResetTwoFactor = asyncHandler(async (req, res) => {
 
   // Clearing totp_enabled/totp_secret_enc means the very next login this user
   // attempts drops back into the forced setup stage - there is no way to log
-  // in with 2FA left disabled.
+  // in with 2FA left disabled. Passkeys and backup codes go too.
   await resetTwoFactor(id);
   await revokeAllForUser(id);
 

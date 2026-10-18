@@ -38,6 +38,15 @@ const schema = z.object({
     .transform((v) => v === 'true'),
   FRONTEND_ORIGIN: z.string().default('http://localhost:5173'),
 
+  // Passkeys (WebAuthn). The RP ID is the domain a passkey is bound to (a
+  // registrable suffix of the page's host, no scheme/port); ORIGIN is the exact
+  // origin the browser reports in clientDataJSON. Both default to what
+  // FRONTEND_ORIGIN says - never to anything derived from the request, which
+  // the Vite proxy rewrites (same reason as the SSO redirect_uri).
+  WEBAUTHN_RP_ID: z.string().optional(),
+  WEBAUTHN_RP_NAME: z.string().optional(),
+  WEBAUTHN_ORIGIN: z.string().url().optional(),
+
   LOGIN_MAX_ATTEMPTS: z.coerce.number().default(5),
   LOGIN_LOCK_MINUTES: z.coerce.number().default(15),
   TWOFA_MAX_ATTEMPTS: z.coerce.number().default(5),
@@ -67,5 +76,10 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+export const env = {
+  ...parsed.data,
+  WEBAUTHN_RP_ID: parsed.data.WEBAUTHN_RP_ID || new URL(parsed.data.FRONTEND_ORIGIN).hostname,
+  WEBAUTHN_RP_NAME: parsed.data.WEBAUTHN_RP_NAME || parsed.data.TWOFA_ISSUER,
+  WEBAUTHN_ORIGIN: parsed.data.WEBAUTHN_ORIGIN || new URL(parsed.data.FRONTEND_ORIGIN).origin,
+};
 export const isProduction = env.NODE_ENV === 'production';

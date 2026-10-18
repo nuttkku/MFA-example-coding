@@ -23,7 +23,8 @@
 
 - **RBAC** (Role-Based Access Control) 3 role: `admin`, `manager`, `user`
 - **บังคับ 2FA (TOTP) กับทุก user ไม่ว่าจะ login ด้วยวิธีไหน** — ไม่มี path ใดในระบบที่ทำให้ login
-  สำเร็จได้โดยไม่ผ่าน 2FA รวมถึง login ผ่าน SSO ด้วย
+  สำเร็จได้โดยไม่ผ่าน 2FA รวมถึง login ผ่าน SSO ด้วย (passkey ที่ตรวจ biometric/PIN แล้วนับเป็น 2 ปัจจัยในตัว — ดูหัวข้อ Passkey)
+- **Passkey (WebAuthn/FIDO2)**: login แบบไม่ใช้รหัสผ่าน หรือใช้แทนโค้ด TOTP ในขั้น 2FA — ลงทะเบียนได้หลังตั้ง TOTP แล้วเท่านั้น
 - ระบบบริหารจัดการ user (สร้าง/แก้ role/ปิดใช้งาน/reset password/reset 2FA) โดย admin
 - **SSO**: Facebook Login (OAuth 2.0), LINE Login (OIDC), Keycloak (OIDC), และ generic OIDC
   provider ใด ๆ — ทุกตัวเป็น optional เปิด/ปิดผ่าน `.env`
@@ -189,6 +190,52 @@ attacker รู้แค่ email ของเหยื่อก็ยิง `/a
 ถ้า SSO ก็ถูกบล็อกด้วย จะกลายเป็นเปิดช่องให้ DoS ผู้ใช้ SSO ได้ง่าย ๆ จากแค่รู้ email เขา — ต่างจาก
 `status: disabled` ที่เป็นการกระทำของ admin โดยตรง ไม่ใช่สิ่งที่ attacker ข้างนอกกระตุ้นให้เกิดได้เอง
 
+## Passkey (WebAuthn / FIDO2)
+
+ใช้ [SimpleWebAuthn](https://simplewebauthn.dev) v14 (`@simplewebauthn/server` + `@simplewebauthn/browser`) — ไม่เขียน
+CBOR/COSE/signature verification เอง เหตุผลเดียวกับ `openid-client` ไฟล์หลัก: `services/passkey.service.js` (DB + verify),
+`controllers/passkey.controller.js`, `routes/passkey.routes.js` (mount ที่ `/api/auth/passkeys`), migration `004_passkeys.sql`,
+`frontend/src/lib/passkeys.js` (ceremony หนึ่งรอบ = options → browser → verify)
+
+**ใช้ได้ 2 บทบาท (ผู้ใช้เลือกให้มีทั้งคู่):**
+
+1. **Login แบบไม่ใช้รหัสผ่าน** (`/login/options` + `/login/verify`) ออก session เต็มตรง ๆ — **นี่คือข้อยกเว้นเดียวของกฎ "ทุก
+   login ต้องผ่าน pre-auth stage"** และไม่ได้ขัดกับเจตนา "บังคับ 2FA" เพราะ server บังคับ `requireUserVerification: true`
+   (เช็ค flag UV ใน authenticator data ที่ถูกเซ็นมา ไม่ใช่แค่ขอผ่าน options ที่ client ข้ามได้) → passkey + biometric/PIN เป็น
+   multi-factor ในตัว (NIST SP 800-63B) **ห้ามลด `userVerification` ของ path นี้เป็น `preferred`** ไม่งั้นมันจะกลายเป็น login
+   ปัจจัยเดียวจริง ๆ
+2. **แทนโค้ด TOTP ในขั้น verify** (`/2fa/options` + `/2fa/verify`, ต้องมี pre-auth cookie stage `verify`) — ปัจจัยแรกผ่านแล้ว
+   จึงใช้ UV `preferred`/ไม่บังคับ, `allowCredentials` จำกัดเฉพาะของ user นั้น, ผิดแล้วนับเข้า 2FA lockout ตัวเดียวกับ TOTP
+   (`recordTwoFactorFailure`) ผ่าน `loadPreAuthUser` เหมือนกัน — ถ้า 2FA ถูกล็อกอยู่ path นี้ก็ใช้ไม่ได้ด้วย (แต่ passwordless
+   ยังใช้ได้ เพราะคนที่เดาโค้ดผิดจนล็อกไม่ควรทำให้เจ้าของที่ถือ passkey เข้าไม่ได้)
+
+**ลงทะเบียนต้อง step-up ด้วย TOTP** (`/register/options` รับ `{ code }`) — ใช้ `requireTotpStepUp()` ใน
+`auth.controller.js` ตัวเดียวกับ regenerate backup codes (แยกออกมาเป็นฟังก์ชันในรอบนี้) เหตุผลเดียวกัน: passkey คือ credential
+ที่ข้ามทั้งรหัสผ่านและ TOTP ได้ ถ้าแค่ session ก็เพิ่มได้ session ที่ถูกขโมยจะฝัง passkey ถาวรได้ แถวใน `webauthn_challenges`
+(purpose `register`, ผูก `user_id`) คือหลักฐานว่า step-up ผ่านแล้วสำหรับ `/register/verify` — ต้องเช็ค `challenge.user_id ===
+req.user.id` เสมอ ลงทะเบียนด้วย `residentKey: required` (passwordless ต้องใช้ discoverable credential), `userVerification:
+required`, `attestationType: 'none'` และ `excludeCredentials` กันลงอุปกรณ์เดิมซ้ำ
+
+**Challenge เก็บฝั่ง server ใช้ได้ครั้งเดียว** — cookie `webauthn_challenge` เก็บแค่ UUID ของแถวใน `webauthn_challenges`
+(ไม่ต้องมี secret ใหม่) `consumeChallenge()` ทำ `DELETE ... WHERE id AND purpose AND expires_at > now() RETURNING` ก่อนตรวจ
+ทุกครั้ง ไม่ว่าจะผ่านหรือไม่ — ถ้าใช้ signed cookie แบบ `sso_state` จะ replay ได้จนหมดอายุ และ request ที่ยิงพร้อมกันได้ challenge
+ไปแค่ตัวเดียว cookie ที่ไม่ใช่ UUID ถูกกรองด้วย `uuidSchema` ก่อนถึง Postgres (ไม่งั้น 500) แถวที่หมดอายุถูกลบตอนสร้างแถวใหม่
+
+**กติกาอื่นที่ต้องรักษา:**
+
+- `expectedOrigin`/`expectedRPID` มาจาก `env.WEBAUTHN_ORIGIN`/`WEBAUTHN_RP_ID` (default จาก `FRONTEND_ORIGIN`) **ห้ามมาจาก
+  request** — บทเรียนเดียวกับ `redirect_uri` ของ SSO (Vite proxy เปลี่ยน Host) passkey ผูกกับ RP ID ถาวร เปลี่ยนแล้วของเดิมใช้ไม่ได้
+- User handle = UUID ของ user (ไม่ใช่ email — WebAuthn §14.6.1) และ `verifyAuthentication()` เช็คว่า `userHandle` ที่
+  authenticator ส่งกลับมาตรงกับเจ้าของ credential
+- Passwordless เช็ค `status === 'disabled'` เหมือนทุกช่องทาง, **ไม่เช็ค password lockout** (เหตุผลเดียวกับ SSO), และปฏิเสธถ้า
+  `totp_enabled = false` (ไม่ควรเกิดได้ แต่ passkey ห้ามกลายเป็นทางถือ session โดยไม่มี TOTP เป็นทางกู้บัญชี)
+- Admin reset 2FA (`resetTwoFactor`) **ลบ passkey ทั้งหมดของ user ด้วย** — reset 2FA = "อุปกรณ์หาย"
+- Signature counter ถอยหลัง (สัญญาณ authenticator ถูก clone) SimpleWebAuthn reject ให้เอง passkey ที่ sync ข้ามเครื่องรายงาน 0 เสมอ (ปกติ)
+- Rate limit: `passkeyOptionsLimiter` (30/5 นาที ต่อ IP) กับ endpoint สร้าง challenge, `loginLimiter` กับ `/login/verify`,
+  `twoFaLimiter` กับ `/2fa/verify` และ `/register/options` (ตรวจโค้ด TOTP)
+- Audit event: `passkey_registered`, `passkey_register_failed`, `passkey_register_stepup_failed`, `passkey_deleted`,
+  `passkey_login_success`, `passkey_login_failed` (metadata `reason`), `2fa_passkey_success`, `2fa_passkey_failed`
+
 ## Token/Cookie ที่ใช้ (ทั้งหมดเป็น httpOnly, SameSite=Lax)
 
 | Cookie | Secret env var | อายุ | ใช้ทำอะไร |
@@ -197,6 +244,7 @@ attacker รู้แค่ email ของเหยื่อก็ยิง `/a
 | `access_token` | `ACCESS_TOKEN_SECRET` | 15 นาที (`ACCESS_TOKEN_TTL`) | ใช้เรียก API ที่ต้อง login |
 | `refresh_token` | `REFRESH_TOKEN_SECRET` | 7 วัน (`REFRESH_TOKEN_TTL`) | ขอ access token ใหม่ผ่าน `/api/auth/refresh`, hash (SHA-256) เก็บใน DB เพื่อ revoke ได้ |
 | `sso_state` | `SSO_STATE_SECRET` | 10 นาที | CSRF state + OIDC nonce + PKCE code_verifier ระหว่าง redirect ไป IdP แล้วกลับมา |
+| `webauthn_challenge` | — (ไม่เซ็น: เป็นแค่ UUID ของแถวใน `webauthn_challenges`) | 5 นาที | ชี้ไปที่ challenge ของ passkey ceremony ที่กำลังทำ ถูกลบทิ้งตอนใช้ครั้งแรก |
 
 ใช้ secret **คนละตัวกันทุก cookie** โดยตั้งใจ — ป้องกัน token ประเภทหนึ่งถูกใช้ปลอมเป็นอีกประเภทได้ถ้าหลุด
 `jwt.sign`/`jwt.verify` ทุกที่ pin `algorithm: 'HS256'` ตรง ๆ ไม่พึ่ง default inference ของ library
@@ -221,6 +269,7 @@ session ใหม่ที่เพิ่งได้จากการเปล
 | รหัสผ่านผู้ใช้ | bcrypt hash (`utils/password.js`) | ไม่ต้องใช้ค่าจริงอีกเลย เทียบด้วย bcrypt.compare ได้ |
 | Backup codes | bcrypt hash (`utils/backupCodes.js`) | เป็น secret ที่ low-entropy เหมือนรหัสผ่าน ใช้ครั้งเดียวทิ้ง เทียบอย่างเดียวพอ |
 | TOTP secret | AES-256-GCM encrypt (`utils/crypto.js`) | **ต้อง decrypt กลับมาค่าจริงได้** เพื่อเอาไปคำนวณโค้ด TOTP รอบต่อไป จะ hash แบบ one-way ไม่ได้ |
+| Passkey public key | เก็บตรง ๆ (`webauthn_credentials.public_key`, COSE_Key) | เป็น public key — หลุดไปก็ใช้ login ไม่ได้ private key ไม่เคยออกจาก authenticator |
 | Refresh token | SHA-256 hash (`token.service.js`) | เป็น token ที่ entropy สูงมากอยู่แล้ว (สุ่มจาก JWT) ไม่ต้องพึ่ง bcrypt ที่ตั้งใจให้ช้า แค่ทนพอสำหรับ compare |
 
 `TOTP_ENCRYPTION_KEY` (32 bytes / 64 hex chars) ต้องถูกตั้งเองผ่าน `.env` — ไม่มี default เพราะถ้า
@@ -285,14 +334,14 @@ Admin แก้ role/สถานะของ**ตัวเอง**ให้ห�
 backend/src/
 ├── config/       env.js (zod validate ตัวแปรแวดล้อมหลัก, fail fast ถ้าขาด), db.js (pg Pool),
 │                 permissions.js (RBAC map), identityProviders.js (SSO registry, soft-fail)
-├── db/           migrations/001_init.sql, 002_add_sso.sql, migrate.js (runner + wait-for-db),
+├── db/           migrations/001_init.sql ... 004_passkeys.sql, migrate.js (runner + wait-for-db),
 │                 seed.js (bootstrap admin)
 ├── middleware/   auth (access/pre-auth cookie verify), rbac (permission check), rateLimit, error
 ├── validators/   schemas.js (zod schema ของทุก request body)
-├── services/     user/token/twofa/audit + oidcClient/facebook/sso (SSO) — business logic ทั้งหมด
-├── controllers/  auth.controller.js, admin.controller.js, sso.controller.js — บาง แค่ประกอบ
+├── services/     user/token/twofa/passkey/audit + oidcClient/facebook/sso (SSO) — business logic ทั้งหมด
+├── controllers/  auth, admin, sso, passkey (.controller.js) — บาง แค่ประกอบ
 │                 service + ตอบ HTTP
-└── routes/       auth.routes.js, admin.routes.js, sso.routes.js
+└── routes/       auth.routes.js, admin.routes.js, sso.routes.js, passkey.routes.js
 ```
 
 Controllers ไม่คุย DB ตรง ๆ — เรียกผ่าน services เท่านั้น ถ้าจะเพิ่ม endpoint ใหม่ ควรเพิ่มฟังก์ชันใน
@@ -306,6 +355,7 @@ frontend/src/
 │   ├── api.js              fetch wrapper เดียวสำหรับทั้งแอป (credentials: 'include' เสมอ)
 │   ├── guards.js            authGuard / adminGuard / userManagementReadGuard สำหรับ route
 │   ├── events.js            preventDefault()/self() แทน event modifier ของ Svelte 4
+│   ├── passkeys.js          WebAuthn ceremony (options → @simplewebauthn/browser → verify) + ข้อความ error
 │   └── stores/
 │       ├── auth.js          session state (เรียก GET /auth/me ตอน app mount)
 │       └── backupCodes.js   เก็บ backup codes ชั่วคราวในหน่วยความจำ (ไม่ persist) ระหว่างเปลี่ยนหน้า
@@ -367,7 +417,9 @@ setup บังคับเหมือนบัญชีอื่นทุก�
   ในตัวอย่างเพื่อการเรียนรู้
 - Rate limiter ใช้ in-memory store ของ `express-rate-limit` (ไม่ผ่าน Redis) — พอสำหรับ instance เดียว
   ถ้าจะ scale เป็นหลาย instance ต้องเปลี่ยนไปใช้ shared store
-- **Account lockout ไม่ครอบคลุม SSO login** (ดูเหตุผลเต็มในหัวข้อ SSO ด้านบน) — ตั้งใจ ไม่ใช่ช่องโหว่ที่ลืมปิด
+- **Account lockout ไม่ครอบคลุม SSO login** (ดูเหตุผลเต็มในหัวข้อ SSO ด้านบน) — ตั้งใจ ไม่ใช่ช่องโหว่ที่ลืมปิด (เช่นเดียวกับ passkey login)
+- **ไม่มีบัญชีแบบ passkey อย่างเดียว** — ต้องตั้ง TOTP ก่อนลงทะเบียน passkey ได้ เพื่อให้มีทางกู้บัญชีเสมอ และยังไม่ทำ
+  conditional UI (passkey autofill) / Signal API ให้ frontend เรียบง่าย
 - CI (`ci.yml`) รันแค่ variant ไม่มี Keycloak — ไม่ได้ตัดทิ้งเพราะมองว่า Keycloak flow ไม่สำคัญ แต่เพราะ
   ต้อง mock ฟอร์ม login ของ Keycloak ถึงจะ automate ได้ (ดู [CI-CD.md](CI-CD.md))
 
@@ -499,7 +551,11 @@ session ชั่วคราวเป็นสิทธิ์ข้าม 2FA �
 ผ่าน `verifyTotpCode` ตัวเดียวกับ login (มี replay protection) ผิดแล้วนับเข้า 2FA lockout ตัวเดียวกัน และมี
 `twoFaLimiter`
 
-### รอบ 5 (Snyk CLI: `snyk test` + `snyk code test`) — เหลือ 0 ยกเว้น 1 false positive
+> **หมายเหตุ CSRF + retry**: `api.js` retry ด้วย token ใหม่เฉพาะเมื่อ response เป็น `{ code: 'csrf' }` (tag ใน `error.middleware.js`) ไม่ใช่ทุก 403 — ครั้งแรกที่ทำ retry ทุก 403 ทำให้ "บัญชีถูกปิด" ของ passkey login ถูกแทนด้วย 401 ของ challenge ที่ถูกใช้ไปแล้ว (UI test จับได้)
+>
+> `.snyk` exclude `skills/**` ออกจาก Snyk Code เพราะเป็นสำเนา snapshot ของโค้ดจริง ไม่ใช่โค้ดที่รัน
+
+### รอบ 6 (Snyk CLI: `snyk test` + `snyk code test`) — เหลือ 0 ยกเว้น 1 false positive
 
 เริ่มจาก Snyk Code 13 finding + dependency 2 ตัว (`zod` high, `qs` high) ปิดหมดโดยแก้โค้ดจริง:
 
@@ -525,6 +581,15 @@ CSRF middleware** (smoke test จับได้: ไม่งั้น 500) smo
 จับจากชื่อแพ็กเกจ `csurf` (deprecated แล้ว) ไม่รู้จัก `csrf-csrf` ไม่เพิ่มแพ็กเกจที่เลิกดูแลเพียงเพื่อเอาใจ scanner
 (`snyk ignore` ใน CLI เขียนเป็น exclude ทั้งไฟล์และไม่มีผลกับ Snyk Code, inline `deepcode ignore` ใช้ได้เฉพาะ IDE
 plugin) ต้อง ignore ที่เว็บ Snyk พร้อมเหตุผล
+
+### รอบ 5 (เพิ่ม Passkey) — แก้แล้วทุกจุด
+
+| จุดที่เจอ | เครื่องมือที่เจอ | การแก้ |
+|---|---|---|
+| `regex_dos` บน regex เช็ครูปแบบ challenge id (`/^[0-9a-f-]{36}$/i`) — จริง ๆ ไม่ใช่ ReDoS (anchored, ความยาวคงที่, ไม่มี quantifier ซ้อน) แต่ block CI | Semgrep | เปลี่ยนไปใช้ `uuidSchema` (zod) ตัวเดียวกับที่ validate `:id` ของ admin route แทนการ `nosemgrep` |
+| Smoke test ส่วน 2FA lockout ได้ 429 แทน 403 หลังเพิ่ม assertion ของ passkey | Smoke test | request ที่ fail ทุกตัวบน route ที่มี `twoFaLimiter` (10 ครั้ง/5 นาที ต่อ IP) กินโควตาเดียวกันทั้ง script — ย้าย check "ไม่มี session → 401" ไปที่ `GET /api/auth/passkeys` (ไม่มี limiter) และใส่ comment เตือนไว้ใน script |
+
+`npm audit` ทั้ง backend/frontend หลังเพิ่ม `@simplewebauthn/*` = 0 ตัว
 
 ## การทดสอบที่ทำไปแล้ว
 
@@ -555,6 +620,14 @@ Build และรันผ่าน `docker compose` จริงบน Docker 
   temporary password ที่ fail แบบสุ่ม ~16% (เจอจาก Playwright ในรอบ 4) smoke test ระดับ API มองไม่เห็นเลย —
   ยืนยันแล้วว่าถ้าใส่ generator ตัวเก่ากลับไป test นี้ fail
 - ทุก Svelte component ยืนยันแล้วว่า compile ผ่าน Vite ได้ไม่มี error (`curl` แต่ละไฟล์ได้ HTTP 200)
+- รอบ 5 (Passkey): `e2e/ui-test.mjs` ใช้ **virtual authenticator ของ Chromium ผ่าน CDP** (`WebAuthn.addVirtualAuthenticator`,
+  ctap2 + resident key + UV) ทำ ceremony จริงครบ: ไม่มีปุ่ม passkey ที่หน้า verify ก่อนลงทะเบียน → เพิ่ม passkey ด้วยโค้ด TOTP ผิด
+  ถูกปฏิเสธ → เพิ่มด้วยโค้ดถูกสำเร็จ → login แบบไม่ใช้รหัสผ่านเข้า dashboard ตรง → password + passkey แทน TOTP → ลบ passkey →
+  authenticator ที่ยังถือ private key อยู่ login ไม่ได้แล้ว → user ธรรมดาลงทะเบียน passkey → admin disable (ใน browser context แยก)
+  แล้ว passkey login ถูกปฏิเสธ → admin reset 2FA แล้ว passkey ของ user ใช้ไม่ได้อีก smoke test เพิ่ม: ต้อง step-up, options บังคับ UV, credential ที่ไม่รู้จัก
+  ถูกปฏิเสธและ challenge ใช้ซ้ำไม่ได้, verify โดยไม่มี challenge cookie ได้ 401, verify stage ไม่เสนอ passkey ให้บัญชีที่ไม่มี
+  ทดสอบมือ: cookie `webauthn_challenge` ที่ไม่ใช่ UUID ได้ 401 (ไม่ใช่ 500), audit log บันทึก event ครบ — รันทั้งหมดผ่าน `docker compose`
+  จริงบน DB ใหม่
 
 ทดสอบ SSO/Keycloak แบบ end-to-end จริงด้วย `curl` (จำลอง browser: ตาม redirect, submit ฟอร์ม login ของ
 Keycloak, ตาม callback กลับ) ครบทุก branch ของ `findOrCreateUserFromIdentity`:

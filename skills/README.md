@@ -6,6 +6,7 @@ Each folder is a self-contained Claude Code skill: `SKILL.md` (frontmatter + the
 | Skill | Use it for |
 |---|---|
 | [forced-totp-2fa](forced-totp-2fa/SKILL.md) | Mandatory TOTP 2FA: pre-auth token, replay protection, lockout, backup codes |
+| [passkeys-webauthn](passkeys-webauthn/SKILL.md) | Passkeys (WebAuthn/FIDO2): passwordless login + second factor, TOTP step-up, one-time challenges |
 | [express-rbac-permissions](express-rbac-permissions/SKILL.md) | Central permission map, `requirePermission`, admin user management guards |
 | [oidc-sso-login](oidc-sso-login/SKILL.md) | Keycloak / LINE / generic OIDC / Facebook login with safe account linking |
 | [secure-session-cookies](secure-session-cookies/SKILL.md) | httpOnly JWT cookies, rotating refresh tokens with reuse detection |
