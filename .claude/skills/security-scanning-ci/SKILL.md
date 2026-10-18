@@ -5,7 +5,8 @@ description: Set up a security-gated CI/CD pipeline for a Dockerised Node app - 
 
 # Security-gated CI/CD
 
-Files in `reference/`: `ci.yml`, `cd.yml`, `smoke-test.sh`, `ui-test.mjs`, `CI-CD.md` (full Thai write-up).
+Files in `reference/`: `ci.yml`, `cd.yml`, `codeql.yml` + `codeql-config.yml`, `.gitleaks.toml`, `smoke-test.sh`,
+`ui-test.mjs`, `unit-tests/` (node:test, no database), `eslint.config.js`, `CI-CD.md` (full Thai write-up).
 
 ## Jobs (all required, none optional)
 
@@ -14,6 +15,16 @@ Files in `reference/`: `ci.yml`, `cd.yml`, `smoke-test.sh`, `ui-test.mjs`, `CI-C
 `image-scan` (Trivy CRITICAL/HIGH, `--ignore-unfixed`, `--skip-dirs /usr/local/lib/node_modules/npm`),
 `smoke-test` (curl through the real stack), `ui-test` (Playwright on a **fresh DB**, separate stack).
 CD: tag `vX.Y.Z` -> build and push `:X.Y.Z` + `:latest` to GHCR; deploy left pluggable.
+
+Also: `quality` (ESLint + `prettier --check` + backend unit tests - fastest job, no Docker), `keycloak-test`
+(Playwright fills the real Keycloak login form; see skill `oidc-sso-login`), `skills-sync` (`diff -r` of two skill copies).
+
+## Unit tests without a database
+
+`node --test --import ./test/setup.js`: `setup.js` sets a complete env **with random secrets** before any import, so
+zod-validated config loads and nothing key-shaped is committed (a literal hex test key was flagged by Gitleaks and had
+to be rewritten out of the branch history). Test pure, security-critical pieces: AES-GCM + truncated tag, token types
+cannot stand in for each other, `alg: none` refused, CSRF guard/token, error-handler tagging, log injection, schemas.
 
 ## Run the same checks locally
 
@@ -38,5 +49,9 @@ docker compose up -d --build && bash scripts/smoke-test.sh
   paths and check `Targets scanned`.
 - Smoke tests that run curl on **Windows** can fail on cookie-jar quirks (expired `Set-Cookie` not removed);
   run them inside a Linux container (`--network container:<frontend>`, strip CRLF) like CI does.
+- Gitleaks with `fetch-depth: 0` scans **every branch**, so one PR branch with a secret-looking literal turns other
+  PRs red too. Fix the branch's history, not just its tip.
+- Merging a PR that touches `.github/workflows/` needs a token with the `workflow` scope
+  (`gh auth refresh -h github.com -s workflow`).
 - Every new auth flow gets an assertion in the smoke test and/or Playwright test - they caught real bugs here
   (middleware order, flaky temporary passwords) that scanners cannot see.

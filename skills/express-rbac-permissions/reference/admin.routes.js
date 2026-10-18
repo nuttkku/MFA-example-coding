@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { requirePermission } from '../middleware/rbac.middleware.js';
+import { generalLimiter } from '../middleware/rateLimit.middleware.js';
 import * as admin from '../controllers/admin.controller.js';
 
 const router = Router();
 
+router.use(generalLimiter);
 router.use(requireAuth);
 
 router.get('/users', requirePermission('users:read'), admin.getUsers);

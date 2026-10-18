@@ -1,0 +1,27 @@
+# Optional addon: a Redis instance that holds the rate-limit counters, so they
+# are shared if you run more than one backend instance. Run alongside the base
+# file (and, if you like, the Keycloak addon):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.redis.yml up -d --build
+#
+# Without this addon REDIS_URL is unset and every limiter counts in the backend
+# process's own memory - fine for the single container the base file runs.
+services:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - app-network
+
+  backend:
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379

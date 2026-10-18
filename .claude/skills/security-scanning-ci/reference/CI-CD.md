@@ -44,6 +44,7 @@ Implementation จริงอยู่ที่ [.github/workflows/ci.yml](.git
 
 | Job | ทำอะไร | ทำไมต้องมี |
 |---|---|---|
+| `quality` | `npm run lint` (ESLint) + `prettier --check` + `npm test` (unit test ของ backend ด้วย `node:test`, ไม่ต้องใช้ DB) แยก matrix backend/frontend | เร็วที่สุดในทุก job (ไม่ต้อง build image) จับ bug ระดับฟังก์ชันและรูปแบบโค้ดก่อนถึง smoke test |
 | `audit` | `npm audit --audit-level=high` ทั้ง `backend/`, `frontend/` และ `e2e/` (แยก job ด้วย matrix, `fail-fast: false` ให้เห็นผลครบทุกตัว) | จับ dependency ที่มีช่องโหว่รู้จักแล้วก่อนที่จะหลุดเข้า image |
 | `security-scan` | รัน [Semgrep](https://semgrep.dev) (ผ่าน Docker image `semgrep/semgrep`) ด้วย ruleset `p/security-audit`, `p/secrets`, `p/javascript`, `p/nodejsscan` แล้ว `--error` (fail ถ้าเจอ finding) | จับ pattern ที่เป็นช่องโหว่จริง เช่น GCM ที่ไม่ pin auth tag length, secret ที่ hardcode ในโค้ด — วิธีเดียวกับที่ใช้ตรวจโปรเจกต์นี้จริงตอนพัฒนา (ดู [CLAUDE.md](CLAUDE.md#ผลการสแกนความปลอดภัย)) |
 | `osv-scan` | [OSV-Scanner](https://google.github.io/osv-scanner/) สแกน lockfile ทั้ง 3 โฟลเดอร์กับฐานข้อมูล OSV | เป็นแหล่งข้อมูลช่องโหว่คนละฐานกับ `npm audit` (ทดแทน `snyk test` ตอนโควตา Snyk หมด) |
@@ -79,21 +80,26 @@ Scan image ทั้งใบเจอช่องโหว่ที่ไม่
 patch ล่าสุด** — เพิ่ม `RUN apk update && apk upgrade --no-cache` ในทั้ง 2 Dockerfile ให้ดึง OS package
 security patch ล่าสุดตอน build เสมอ ไม่พึ่งแค่เวอร์ชันที่ฝังมากับ base image ตอนนั้น
 
-### สแกน docker-compose.keycloak.yml ด้วยหรือไม่?
+### ทดสอบ docker-compose.keycloak.yml ด้วยหรือไม่?
 
-**ไม่** — CI รันแค่ `docker-compose.yml` (ไม่มี Keycloak) เพราะ:
-1. เร็วกว่ามาก (ไม่ต้อง pull/boot Keycloak ทุก PR)
-2. Flow ของ Keycloak ใช้โค้ด**เดียวกัน**กับ generic OIDC (`oidcClient.service.js`) ที่ทดสอบผ่าน
-   `smoke-test.sh` ทางอ้อมอยู่แล้วในแง่ "ระบบ 2FA/RBAC ไม่พังเมื่อ user ไม่มีรหัสผ่าน local" (สร้าง user
-   ผ่าน admin API ให้ role `user`) — ส่วนที่ Keycloak เพิ่มมาเฉพาะคือ HTTP redirect chain ซึ่งได้ทดสอบมือ
-   แบบ end-to-end ไปแล้วตอนพัฒนา (ดู [CLAUDE.md](CLAUDE.md#sso--oidc-facebook-line-keycloak-generic-oidc))
-3. ถ้าจะเพิ่ม smoke test สำหรับ Keycloak ใน CI จริง ๆ ต้อง mock ฟอร์ม login ของ Keycloak (ไม่มี API
-   แบบ `curl` ตรง ๆ) — เป็นแนวทางต่อยอดที่บันทึกไว้ใน README แล้ว ไม่ได้ตัดทิ้งเพราะมองว่าไม่สำคัญ
-   แต่เพราะ cost/benefit ยังไม่คุ้มในตอนนี้
+**ทดสอบแล้ว** — job `keycloak-test` รัน stack ด้วยทั้ง 2 compose file แล้วใช้ Playwright
+([e2e/keycloak-test.mjs](e2e/keycloak-test.mjs)) ขับ redirect chain จริงไปที่ฟอร์ม login ของ Keycloak แล้วกลับมา: user ใหม่ตกไป
+2FA setup โดยยังไม่มี session (`/auth/me` = 401) → ตั้ง TOTP → dashboard (role `user`, ไม่มีรหัสผ่าน local) → logout →
+login ซ้ำได้ stage `verify` ไม่ใช่ `setup` → โค้ดที่ใช้ตอน setup ใช้ซ้ำไม่ได้ → โค้ดใหม่เข้าได้ เดิมเคยข้ามไว้เพราะคิดว่าต้อง mock
+ฟอร์มของ Keycloak แต่ Playwright กรอกฟอร์มจริงได้ตรง ๆ (`#username`/`#password`/`#kc-login`) job นี้ช้าที่สุดเพราะต้องรอ
+Keycloak import realm จนพร้อม
+
+รันในเครื่อง: `docker compose -f docker-compose.yml -f docker-compose.keycloak.yml up -d --build` แล้ว
+`(cd e2e && npm run test:keycloak)` (ต้องใช้ฐานข้อมูลใหม่)
 
 ## รันเหมือน CI บนเครื่องตัวเอง (ก่อน push)
 
 ```bash
+# 0) lint + unit test (เร็ว ไม่ต้องมี Docker)
+(cd backend && npm ci && npm run lint && npm test)
+(cd frontend && npm ci && npm run lint)
+npx prettier@3.9.10 --check .
+
 # 1) audit dependency
 cd backend && npm ci && npm audit --audit-level=high && cd ..
 cd frontend && npm ci && npm audit --audit-level=high && cd ..
@@ -211,9 +217,7 @@ Dockerfile/เปลี่ยน endpoint/เปลี่ยนหน้าเ�
 
 ## แนวทางต่อยอด CI/CD
 
-- เพิ่ม Dependabot (`.github/dependabot.yml`) ให้เปิด PR อัปเดต dependency อัตโนมัติ แล้วให้ `ci.yml`
-  ตรวจสอบ PR นั้นเหมือน PR ปกติ
-- เพิ่ม job แยกสำหรับ scan `docker-compose.keycloak.yml` (ทดสอบ Keycloak flow แบบ headless เช่นใช้
-  Playwright กรอกฟอร์ม login ของ Keycloak จริง)
+- ~~เพิ่ม Dependabot~~ — เพิ่มแล้ว ([.github/dependabot.yml](.github/dependabot.yml)): npm ทั้ง 3 โฟลเดอร์ + GitHub Actions + Dockerfile รายสัปดาห์ จัดกลุ่ม minor/patch เป็น PR เดียว ทุก PR ผ่าน `ci.yml` เหมือน PR ปกติ (ไม่พึ่งโควตา Snyk) major upgrade จะมาเป็น PR แยก ต้องอ่านก่อน merge
+- ~~ทดสอบ Keycloak flow แบบ headless~~ — เพิ่มแล้ว (job `keycloak-test`)
 - เพิ่ม staging environment: deploy image ที่ build จาก `main` ไปที่ staging อัตโนมัติทุกครั้งที่ merge
   ก่อนจะ tag เป็น release จริง

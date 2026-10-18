@@ -43,6 +43,12 @@ returns a full session directly, so 2FA cannot be bypassed.
 `sso.controller.js`, `sso.routes.js`, `002_add_sso.sql`, `docker-compose.keycloak.yml` + `realm-export.json`
 (demo Keycloak realm; the client secret in it is a placeholder - change it).
 
+## Testing
+
+`keycloak-test.mjs` (Playwright) drives the real Keycloak login form (`#username`, `#password`, `#kc-login`) - no
+mocking needed. Assert: a new SSO user lands in 2FA setup with `/auth/me` still 401; a returning user gets `verify`,
+not `setup`; the setup code cannot be replayed. Keycloak may skip its form on the second login (its own session).
+
 ## Frontend
 
 Fetch `GET /sso/providers` and render only enabled providers as plain `<a href>` links (a real navigation, not

@@ -43,7 +43,9 @@ cases, which is what makes "no bypass" provable.
    login falls back to `setup`.
 7. **Step-up for regenerating backup codes**: require a fresh TOTP code (not a backup code) - otherwise a stolen
    session cookie becomes permanent 2FA-bypass credentials.
-8. Rate-limit `/2fa/*` per IP with `skipSuccessfulRequests: true` (count only failures).
+8. Rate-limit `/2fa/*` per IP with `skipSuccessfulRequests: true` (count only failures), plus a coarse
+   `generalLimiter` on every auth router. Counters live in memory by default; set `REDIS_URL` to share them
+   across instances (`redis.js`, `docker-compose.redis.yml`; one key prefix per limiter, fail closed if Redis is down).
 
 ## Files in `reference/`
 

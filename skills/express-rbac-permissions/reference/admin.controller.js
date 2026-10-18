@@ -1,7 +1,13 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { hashSecret } from '../utils/password.js';
 import { ConflictError, NotFoundError } from '../utils/errors.js';
-import { createUserSchema, updateUserSchema, resetPasswordSchema, userIdParamSchema, listUsersQuerySchema } from '../validators/schemas.js';
+import {
+  createUserSchema,
+  updateUserSchema,
+  resetPasswordSchema,
+  userIdParamSchema,
+  listUsersQuerySchema,
+} from '../validators/schemas.js';
 import {
   listUsers,
   createUser,
