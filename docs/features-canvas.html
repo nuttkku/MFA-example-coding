@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MFA Example Feature Canvas</title>
+<style>
+  :root {
+    --bg: #f6f7fb; --surface: #ffffff; --text: #1b1f2a; --muted: #5b6475; --border: #dfe3ec;
+    --accent: #3b5bdb; --accent-soft: #e7ecff; --good: #1f8a4c; --warn: #b4690e; --code: #eef0f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1218; --surface: #181c25; --text: #e8ebf2; --muted: #9aa3b5; --border: #2a3040;
+      --accent: #8fa8ff; --accent-soft: #232b45; --good: #5ad08a; --warn: #f0b35a; --code: #222736;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1218; --surface: #181c25; --text: #e8ebf2; --muted: #9aa3b5; --border: #2a3040;
+    --accent: #8fa8ff; --accent-soft: #232b45; --good: #5ad08a; --warn: #f0b35a; --code: #222736;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", "Noto Sans Thai", sans-serif; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; justify-content: space-between; }
+  h1 { font-size: 1.7rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0; max-width: 62ch; }
+  button, .chip { font: inherit; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+  button:hover, .chip:hover { border-color: var(--accent); }
+  .chip[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .chip[aria-pressed="true"] { color: #0f1218; } }
+  :root[data-theme="dark"] .chip[aria-pressed="true"] { color: #0f1218; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 8px; }
+  .search { flex: 1 1 220px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border-radius: 10px; padding: 8px 12px; font: inherit; }
+  .stat { color: var(--muted); font-size: .9rem; margin: 4px 0 16px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px;
+    display: flex; flex-direction: column; gap: 10px; }
+  .card h2 { font-size: 1.12rem; margin: 0; }
+  .tag { align-self: flex-start; font-size: .75rem; padding: 2px 10px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent); }
+  .why { color: var(--muted); margin: 0; }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .82rem; }
+  .flow span { background: var(--code); border-radius: 8px; padding: 3px 8px; }
+  .flow i { color: var(--muted); font-style: normal; }
+  details { border-top: 1px solid var(--border); padding-top: 8px; }
+  summary { cursor: pointer; font-weight: 600; }
+  ul { margin: 8px 0 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  code { background: var(--code); border-radius: 5px; padding: 1px 5px; font-size: .88em; }
+  .meta { font-size: .85rem; color: var(--muted); display: grid; gap: 4px; }
+  .skill { color: var(--good); font-weight: 600; }
+  .effort { color: var(--warn); font-weight: 600; }
+  .empty { display: none; text-align: center; color: var(--muted); padding: 40px 0; }
+  footer { margin-top: 40px; color: var(--muted); font-size: .9rem; }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>MFA Example — Feature Canvas</h1>
+      <p class="sub">ทุก feature ใน repo นี้ที่หยิบไป implement ในโปรเจกต์ของคุณได้ — แต่ละการ์ดบอกว่าคืออะไร ทำงานยังไง กติกาที่ห้ามพลาด ไฟล์ที่ต้องดู และ Claude Code skill ที่ใช้เร่งงาน</p>
+    </div>
+    <button id="theme" type="button" aria-label="สลับธีม">สลับธีม</button>
+  </header>
+
+  <div class="toolbar" id="filters" role="group" aria-label="กรองตามหมวด"></div>
+  <div class="toolbar"><input class="search" id="q" type="search" placeholder="ค้นหา เช่น passkey, csrf, session" aria-label="ค้นหา feature"></div>
+  <p class="stat" id="stat"></p>
+  <div class="grid" id="grid"></div>
+  <p class="empty" id="empty">ไม่พบ feature ที่ตรงกับคำค้น</p>
+
+  <footer>
+    วิธีติดตั้ง skill: <code>cp -r skills/&lt;ชื่อ&gt; ~/.claude/skills/</code> — ดู <a href="../skills/README.md">skills/README.md</a> ·
+    รายละเอียดเชิงลึก: <a href="../CLAUDE.md">CLAUDE.md</a> และ <a href="../README.md">README.md</a>
+  </footer>
+</div>
+
+<script>
+const FEATURES = [
+  {
+    cat: 'การยืนยันตัวตน', title: 'บังคับ 2FA (TOTP) ทุกคน', skill: 'forced-totp-2fa', effort: 'กลาง',
+    why: 'ไม่มี login path ไหนผ่านได้ด้วยรหัสผ่านอย่างเดียว — รวมถึง SSO',
+    flow: ['ผ่านรหัสผ่าน', 'pre-auth cookie (5 นาที)', 'setup / verify', 'session เต็ม'],
+    rules: ['โค้ด TOTP ใช้ได้ครั้งเดียว (claim time-step ใน DB)', 'lockout 2FA ต่อบัญชี แยกจาก password lockout', 'TOTP secret เข้ารหัส AES-256-GCM (pin authTagLength)', 'Backup codes เก็บ bcrypt ใช้ครั้งเดียว', 'admin ทำได้แค่ reset ห้าม disable 2FA'],
+    files: ['backend/src/services/twofa.service.js', 'backend/src/utils/crypto.js', 'backend/src/controllers/auth.controller.js', 'migrations 001, 003'],
+  },
+  {
+    cat: 'การยืนยันตัวตน', title: 'Passkey (WebAuthn / FIDO2)', skill: 'passkeys-webauthn', effort: 'สูง',
+    why: 'login แบบไม่ใช้รหัสผ่าน หรือใช้แทนโค้ด TOTP — ตรวจ biometric/PIN ที่ฝั่ง server',
+    flow: ['options (challenge)', 'authenticator เซ็น', 'verify', 'session / ผ่าน 2FA'],
+    rules: ['บังคับ requireUserVerification ฝั่ง server ห้ามลดเป็น preferred', 'ลงทะเบียนต้อง step-up ด้วยโค้ด TOTP', 'challenge เก็บใน DB ใช้ได้ครั้งเดียว (DELETE … RETURNING)', 'RP ID / origin มาจาก config ไม่ใช่ request', 'admin reset 2FA ลบ passkey ทั้งหมดของ user'],
+    files: ['backend/src/services/passkey.service.js', 'backend/src/controllers/passkey.controller.js', 'frontend/src/lib/passkeys.js', 'migration 004'],
+  },
+  {
+    cat: 'การยืนยันตัวตน', title: 'SSO: Keycloak / LINE / Facebook / OIDC', skill: 'oidc-sso-login', effort: 'สูง',
+    why: 'เปิด/ปิดแต่ละ provider ผ่าน .env และยังต้องผ่าน 2FA เหมือนเดิม',
+    flow: ['/start (state+PKCE)', 'IdP login', '/callback', 'pre-auth cookie', '2FA'],
+    rules: ['ใช้ openid-client ไม่เขียน JWT/JWKS validation เอง', 'link account เฉพาะ email ที่ verified', 'redirect_uri สร้างจาก FRONTEND_ORIGIN ไม่ใช่ Host header', 'rewrite issuer เป็น public origin เมื่อรันใน docker', 'บล็อกบัญชีที่ถูก disable ทุกช่องทางรวม SSO'],
+    files: ['backend/src/services/oidcClient.service.js', 'backend/src/services/sso.service.js', 'backend/src/config/identityProviders.js', 'docker-compose.keycloak.yml'],
+  },
+  {
+    cat: 'การเข้าถึง', title: 'RBAC + หน้าบริหารผู้ใช้', skill: 'express-rbac-permissions', effort: 'ต่ำ',
+    why: 'สิทธิ์ตาม role (admin / manager / user) แก้ที่ไฟล์เดียว',
+    flow: ['requireAuth', 'requirePermission("users:write")', 'controller'],
+    rules: ['permission map รวมศูนย์ที่ permissions.js', 'โหลด user จาก DB ทุก request ไม่เชื่อ role ใน token', 'admin ลดสิทธิ์/ปิดตัวเองไม่ได้ (เทียบ id หลัง normalize ตัวพิมพ์)', 'validate :id และ query ด้วย zod', 'disable user = revoke refresh token ทั้งหมด'],
+    files: ['backend/src/config/permissions.js', 'backend/src/middleware/rbac.middleware.js', 'backend/src/controllers/admin.controller.js'],
+  },
+  {
+    cat: 'Session', title: 'Session ด้วย JWT cookie + refresh rotation', skill: 'secure-session-cookies', effort: 'กลาง',
+    why: 'access สั้น refresh ยาวแต่ rotate ทุกครั้ง และจับการขโมย token ได้',
+    flow: ['access 15 นาที', 'หมดอายุ → /refresh', 'revoke ตัวเก่า + ออกตัวใหม่'],
+    rules: ['secret คนละตัวต่อ token type + pin HS256', 'cookie httpOnly / SameSite=Lax / Secure ตาม env', 'ใช้ token ที่ถูก rotate ซ้ำ → revoke ทั้ง family', 'refresh เก็บเป็น SHA-256 hash', 'เปลี่ยนรหัสผ่าน → revoke session อื่นทั้งหมด'],
+    files: ['backend/src/services/token.service.js', 'backend/src/middleware/auth.middleware.js'],
+  },
+  {
+    cat: 'Session', title: 'ป้องกัน CSRF สำหรับ SPA', skill: 'csrf-double-submit-spa', effort: 'ต่ำ',
+    why: 'double-submit token + ตรวจ Origin โดยไม่ใช้แพ็กเกจ csurf ที่เลิกดูแล',
+    flow: ['GET /api/csrf-token', 'แนบ X-CSRF-Token', 'ตรวจ token + Origin'],
+    rules: ['cookieParser ต้องอยู่ก่อน CSRF middleware', 'ไม่มี Origin = ไม่ใช่ browser → ข้ามการตรวจ token', 'retry ขอ token ใหม่เฉพาะเมื่อ response เป็น code: "csrf"', 'scanner บางตัวรายงาน false positive เพราะจับจากชื่อ csurf'],
+    files: ['backend/src/middleware/csrf.middleware.js', 'frontend/src/lib/api.js'],
+  },
+  {
+    cat: 'ป้องกันการโจมตี', title: 'Rate limit + Account lockout', skill: 'forced-totp-2fa', effort: 'ต่ำ',
+    why: 'จำกัดการเดารหัสผ่านและโค้ด 2FA ทั้งต่อ IP และต่อบัญชี',
+    flow: ['generalLimiter', 'limiter เฉพาะ route', 'นับความล้มเหลวต่อบัญชี'],
+    rules: ['ตอบ error เหมือนกันและใช้เวลาเท่ากันไม่ว่ามี email หรือไม่', 'twoFaLimiter นับเฉพาะครั้งที่ผิด', 'TRUST_PROXY ปิดโดย default กัน X-Forwarded-For ปลอม', 'lockout ไม่ครอบคลุม SSO/passkey โดยตั้งใจ (กัน DoS ผู้ใช้)'],
+    files: ['backend/src/middleware/rateLimit.middleware.js', 'backend/src/utils/password.js'],
+  },
+  {
+    cat: 'ป้องกันการโจมตี', title: 'จัดเก็บความลับ: hash vs encrypt', skill: 'forced-totp-2fa', effort: 'ต่ำ',
+    why: 'เลือกวิธีเก็บให้ถูกกับชนิดข้อมูล',
+    flow: ['ไม่ต้องใช้ค่าจริง → hash', 'ต้องถอดกลับ → encrypt'],
+    rules: ['รหัสผ่าน / backup code → bcrypt', 'TOTP secret → AES-256-GCM (key จาก env ไม่มี default)', 'refresh token → SHA-256', 'passkey public key เก็บตรง ๆ ได้ (ไม่ใช่ความลับ)'],
+    files: ['backend/src/utils/crypto.js', 'backend/src/utils/backupCodes.js'],
+  },
+  {
+    cat: 'Operations', title: 'Audit log', skill: 'express-rbac-permissions', effort: 'ต่ำ',
+    why: 'บันทึกเหตุการณ์สำคัญของ auth และ admin พร้อม IP และ metadata',
+    flow: ['recordEvent()', 'ตาราง audit_logs', 'หน้า admin (audit:read)'],
+    rules: ['บันทึกทั้งสำเร็จและล้มเหลว (มี reason)', 'เฉพาะ admin อ่านได้', 'sanitize ค่าที่มาจากผู้ใช้ก่อนลง log (กัน log injection)'],
+    files: ['backend/src/services/audit.service.js', 'backend/src/utils/logger.js'],
+  },
+  {
+    cat: 'Operations', title: 'CI/CD ที่บังคับสแกนความปลอดภัย', skill: 'security-scanning-ci', effort: 'กลาง',
+    why: 'npm audit, Semgrep, CodeQL, OSV, Gitleaks, Trivy, smoke test, Playwright ก่อน merge',
+    flow: ['push / PR', 'สแกน + build', 'smoke + UI test', 'tag vX.Y.Z → GHCR'],
+    rules: ['แก้ที่ต้นเหตุก่อน suppress ทีละบรรทัดพร้อมเหตุผล', 'อย่าถอด --error หรือปิดทั้ง rule', 'ทุก flow auth ใหม่ต้องมี assertion ใน smoke/UI test', 'Dependabot ช่วยอัปเดตโดยไม่พึ่งโควตา Snyk'],
+    files: ['.github/workflows/ci.yml', '.github/workflows/codeql.yml', 'scripts/smoke-test.sh', 'e2e/ui-test.mjs'],
+  },
+  {
+    cat: 'Frontend', title: 'Svelte 5 + Vite 8 SPA', skill: 'svelte5-spa-auth-frontend', effort: 'กลาง',
+    why: 'หน้า login / 2FA / admin ด้วย runes, route guard และ fetch wrapper เดียว',
+    flow: ['svelte-spa-router', 'guards.js', 'api.js (credentials + CSRF)'],
+    rules: ['บังคับ runes: true กัน syntax Svelte 4 หลุดเข้ามา', 'Vite proxy /api → backend ให้เป็น origin เดียว', 'ไม่ใช้ {@html}', 'ซ่อนเมนูตาม role แต่บังคับสิทธิ์ที่ server'],
+    files: ['frontend/src/App.svelte', 'frontend/src/lib/guards.js', 'frontend/vite.config.js'],
+  },
+  {
+    cat: 'Operations', title: 'Docker Compose dev stack', skill: 'docker-compose-dev-stack', effort: 'ต่ำ',
+    why: 'Postgres + Express + Vite (+ Keycloak addon) รันด้วยคำสั่งเดียว',
+    flow: ['generate-secrets.sh', 'docker compose up', 'migrate + seed อัตโนมัติ'],
+    rules: ['รอ Postgres ด้วย healthcheck และ retry', 'container รันเป็น non-root', 'nodemon legacyWatch สำหรับ Windows/Docker Desktop', 'seed บัญชีทดสอบเฉพาะเมื่อ NODE_ENV ไม่ใช่ production'],
+    files: ['docker-compose.yml', 'docker-compose.keycloak.yml', 'scripts/generate-secrets.sh'],
+  },
+];
+
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const cats = ['ทั้งหมด', ...new Set(FEATURES.map((f) => f.cat))];
+let activeCat = 'ทั้งหมด';
+
+const filters = document.getElementById('filters');
+const grid = document.getElementById('grid');
+const stat = document.getElementById('stat');
+const empty = document.getElementById('empty');
+const q = document.getElementById('q');
+
+function renderFilters() {
+  filters.innerHTML = '';
+  for (const c of cats) {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.type = 'button';
+    b.textContent = c;
+    b.setAttribute('aria-pressed', String(c === activeCat));
+    b.addEventListener('click', () => { activeCat = c; renderFilters(); renderGrid(); });
+    filters.appendChild(b);
+  }
+}
+
+function card(f) {
+  return `<article class="card">
+    <span class="tag">${esc(f.cat)}</span>
+    <h2>${esc(f.title)}</h2>
+    <p class="why">${esc(f.why)}</p>
+    <div class="flow">${f.flow.map((s) => `<span>${esc(s)}</span>`).join('<i>→</i>')}</div>
+    <details><summary>กติกาที่ต้องรักษา</summary><ul>${f.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></details>
+    <details><summary>ไฟล์ที่ต้องดู</summary><ul>${f.files.map((r) => `<li><code>${esc(r)}</code></li>`).join('')}</ul></details>
+    <div class="meta">
+      <span>Skill: <span class="skill">${esc(f.skill)}</span></span>
+      <span>ความยากโดยประมาณ: <span class="effort">${esc(f.effort)}</span></span>
+    </div>
+  </article>`;
+}
+
+function renderGrid() {
+  const term = q.value.trim().toLowerCase();
+  const list = FEATURES.filter((f) =>
+    (activeCat === 'ทั้งหมด' || f.cat === activeCat) &&
+    (!term || JSON.stringify(f).toLowerCase().includes(term)));
+  grid.innerHTML = list.map(card).join('');
+  stat.textContent = `แสดง ${list.length} จาก ${FEATURES.length} feature`;
+  empty.style.display = list.length ? 'none' : 'block';
+}
+
+q.addEventListener('input', renderGrid);
+document.getElementById('theme').addEventListener('click', () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  root.dataset.theme = dark ? 'light' : 'dark';
+});
+
+renderFilters();
+renderGrid();
+</script>
+</body>
+</html>
