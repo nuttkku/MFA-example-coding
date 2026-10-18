@@ -38,7 +38,9 @@ test('a pre-auth token cannot be used as an access token (separate secrets)', ()
 });
 
 test('a token signed with the right secret but the wrong typ is rejected', () => {
-  const forged = jwt.sign({ sub: 'u1', role: 'admin', typ: 'refresh' }, env.ACCESS_TOKEN_SECRET, { algorithm: 'HS256' });
+  const forged = jwt.sign({ sub: 'u1', role: 'admin', typ: 'refresh' }, env.ACCESS_TOKEN_SECRET, {
+    algorithm: 'HS256',
+  });
   assert.throws(() => verifyAccessCookie(reqWith({ [COOKIE_NAMES.access]: forged })), UnauthorizedError);
 });
 

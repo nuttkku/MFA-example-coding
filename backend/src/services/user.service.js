@@ -51,10 +51,11 @@ export async function updateRoleAndStatus(id, { role, status }) {
 }
 
 export async function setPasswordHash(id, passwordHash, { mustChangePassword = false } = {}) {
-  await pool.query(
-    `UPDATE users SET password_hash = $2, must_change_password = $3, updated_at = now() WHERE id = $1`,
-    [id, passwordHash, mustChangePassword],
-  );
+  await pool.query(`UPDATE users SET password_hash = $2, must_change_password = $3, updated_at = now() WHERE id = $1`, [
+    id,
+    passwordHash,
+    mustChangePassword,
+  ]);
 }
 
 export async function clearMustChangePassword(id) {

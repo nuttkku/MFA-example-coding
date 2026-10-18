@@ -1,11 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { UnauthorizedError, ForbiddenError, ValidationError, NotFoundError } from '../utils/errors.js';
-import {
-  twoFaCodeSchema,
-  passkeyRegisterSchema,
-  passkeyAssertionSchema,
-  uuidSchema,
-} from '../validators/schemas.js';
+import { twoFaCodeSchema, passkeyRegisterSchema, passkeyAssertionSchema, uuidSchema } from '../validators/schemas.js';
 import { findById, resetFailedTwoFactor } from '../services/user.service.js';
 import { recordEvent } from '../services/audit.service.js';
 import {

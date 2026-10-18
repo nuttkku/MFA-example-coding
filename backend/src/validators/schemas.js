@@ -48,7 +48,10 @@ export const listUsersQuerySchema = z.object({
 // (RegistrationResponseJSON / AuthenticationResponseJSON). Everything inside
 // `response` is verified cryptographically by @simplewebauthn/server; this just
 // rejects obviously malformed bodies before they reach it.
-const base64url = z.string().max(4096).regex(/^[A-Za-z0-9_-]*$/);
+const base64url = z
+  .string()
+  .max(4096)
+  .regex(/^[A-Za-z0-9_-]*$/);
 const publicKeyCredential = z.object({
   id: base64url.min(1).max(1024),
   rawId: base64url.min(1).max(1024),

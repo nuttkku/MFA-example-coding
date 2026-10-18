@@ -23,9 +23,7 @@ const ADMIN_NEW_PASSWORD = randomPassword();
 const NEW_USER_EMAIL = `ui-user-${Date.now()}@example.com`;
 const NEW_USER_PASSWORD = randomPassword();
 
-const browser = await chromium.launch(
-  process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {},
-);
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const page = await browser.newPage();
 
 // 401 (/auth/me before login, rejected passkeys), 404 (/favicon.ico), 400
@@ -64,7 +62,10 @@ async function check(promise, message) {
 }
 
 const expectRoute = (hash, message) =>
-  check(page.waitForURL((url) => url.hash.startsWith(hash), { timeout: 10000 }), message);
+  check(
+    page.waitForURL((url) => url.hash.startsWith(hash), { timeout: 10000 }),
+    message,
+  );
 
 const waitForNextTotpStep = () => page.waitForTimeout((31 - (Math.floor(Date.now() / 1000) % 30)) * 1000);
 
@@ -102,7 +103,10 @@ await expectRoute('#/login', 'anonymous user is sent to /login');
 // A real SSO callback arrives as a full page load from the IdP, not a hash change.
 await page.goto('about:blank');
 await page.goto(`${BASE_URL}/#/login?error=sso_denied`);
-await check(page.waitForSelector('.alert-error:has-text("cancelled or denied")'), 'SSO error code shown as a friendly message');
+await check(
+  page.waitForSelector('.alert-error:has-text("cancelled or denied")'),
+  'SSO error code shown as a friendly message',
+);
 
 console.log('--- admin: forced 2FA setup and password change ---');
 await login(ADMIN_EMAIL, ADMIN_PASSWORD);
@@ -146,8 +150,10 @@ const row = page.locator('tr', { has: page.locator('td', { hasText: NEW_USER_EMA
 await row.locator('select').selectOption('manager');
 await check(
   page.waitForFunction(
-    (email) => [...document.querySelectorAll('tbody tr')]
-      .some((tr) => tr.textContent.includes(email) && tr.querySelector('select')?.value === 'manager'),
+    (email) =>
+      [...document.querySelectorAll('tbody tr')].some(
+        (tr) => tr.textContent.includes(email) && tr.querySelector('select')?.value === 'manager',
+      ),
     NEW_USER_EMAIL,
   ),
   'role change saved',
@@ -239,7 +245,10 @@ await check(page.waitForSelector('text=No passkeys yet.'), 'profile lists no pas
 await page.fill('#passkey-name', 'UI test key');
 await page.fill('#passkey-code', '000000');
 await page.click('button:has-text("Add a passkey")');
-await check(page.waitForSelector('.alert-error:has-text("Invalid")'), 'adding a passkey with a wrong TOTP code is refused');
+await check(
+  page.waitForSelector('.alert-error:has-text("Invalid")'),
+  'adding a passkey with a wrong TOTP code is refused',
+);
 await waitForNextTotpStep();
 await page.fill('#passkey-code', authenticator.generate(adminSecret));
 await page.click('button:has-text("Add a passkey")');
@@ -267,7 +276,10 @@ await expectRoute('#/login', 'logged out');
 // The virtual authenticator still holds the private key - the server must
 // refuse it now that the credential is gone.
 await page.click('button:has-text("Sign in with a passkey")');
-await check(page.waitForSelector('.alert-error:has-text("Passkey sign-in failed")'), 'removed passkey can no longer sign in');
+await check(
+  page.waitForSelector('.alert-error:has-text("Passkey sign-in failed")'),
+  'removed passkey can no longer sign in',
+);
 
 console.log('--- plain user: forced setup, RBAC ---');
 await login(NEW_USER_EMAIL, newUserTempPassword);
@@ -309,7 +321,10 @@ await userRow.locator('button:has-text("Disable")').click();
 await check(userRow.locator('.badge-disabled').waitFor(), 'admin disabled the plain user');
 
 await page.click('button:has-text("Sign in with a passkey")');
-await check(page.waitForSelector('.alert-error:has-text("disabled")'), 'disabled account cannot sign in with a passkey');
+await check(
+  page.waitForSelector('.alert-error:has-text("disabled")'),
+  'disabled account cannot sign in with a passkey',
+);
 
 await userRow.locator('button:has-text("Enable")').click();
 await check(userRow.locator('.badge-active').waitFor(), 'admin re-enabled the plain user');
@@ -318,7 +333,10 @@ await check(adminPage.waitForSelector('.alert-success:has-text("2FA reset")'), "
 await adminPage.close();
 
 await page.click('button:has-text("Sign in with a passkey")');
-await check(page.waitForSelector('.alert-error:has-text("Passkey sign-in failed")'), "admin 2FA reset also removes the user's passkeys");
+await check(
+  page.waitForSelector('.alert-error:has-text("Passkey sign-in failed")'),
+  "admin 2FA reset also removes the user's passkeys",
+);
 
 if (unexpectedErrors.length) await fail(`unexpected browser errors:\n${unexpectedErrors.join('\n')}`);
 pass('no unexpected browser errors');

@@ -87,8 +87,7 @@ export const api = {
   },
 
   admin: {
-    listUsers: (search) =>
-      request(`/admin/users${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+    listUsers: (search) => request(`/admin/users${search ? `?search=${encodeURIComponent(search)}` : ''}`),
     createUser: (payload) => request('/admin/users', { method: 'POST', body: payload }),
     updateUser: (id, payload) => request(`/admin/users/${id}`, { method: 'PATCH', body: payload }),
     resetPassword: (id, temporaryPassword) =>

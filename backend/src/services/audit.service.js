@@ -1,10 +1,12 @@
 import { pool } from '../config/db.js';
 
 export async function recordEvent({ userId = null, eventType, metadata = {}, ipAddress = null }) {
-  await pool.query(
-    `INSERT INTO audit_logs (user_id, event_type, metadata, ip_address) VALUES ($1, $2, $3, $4)`,
-    [userId, eventType, metadata, ipAddress],
-  );
+  await pool.query(`INSERT INTO audit_logs (user_id, event_type, metadata, ip_address) VALUES ($1, $2, $3, $4)`, [
+    userId,
+    eventType,
+    metadata,
+    ipAddress,
+  ]);
 }
 
 export async function listEvents({ limit = 50, offset = 0 }) {

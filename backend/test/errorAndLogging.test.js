@@ -8,8 +8,14 @@ import { logger } from '../src/utils/logger.js';
 function capture(err) {
   const out = {};
   const res = {
-    status(code) { out.status = code; return this; },
-    json(body) { out.body = body; return this; },
+    status(code) {
+      out.status = code;
+      return this;
+    },
+    json(body) {
+      out.body = body;
+      return this;
+    },
   };
   const originalError = console.error;
   console.error = () => {};

@@ -53,10 +53,9 @@ export async function issueBackupCodes(userId) {
 
 export async function consumeBackupCode(userId, code) {
   const normalized = normalizeBackupCode(code);
-  const { rows } = await pool.query(
-    'SELECT id, code_hash FROM backup_codes WHERE user_id = $1 AND used_at IS NULL',
-    [userId],
-  );
+  const { rows } = await pool.query('SELECT id, code_hash FROM backup_codes WHERE user_id = $1 AND used_at IS NULL', [
+    userId,
+  ]);
 
   for (const row of rows) {
     if (await verifySecret(normalized, row.code_hash)) {
