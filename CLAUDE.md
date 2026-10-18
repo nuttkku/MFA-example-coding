@@ -519,6 +519,8 @@ session ชั่วคราวเป็นสิทธิ์ข้าม 2FA �
 ขี่ — secret ของ token derive จาก `SSO_STATE_SECRET` ด้วย HMAC (ไม่ต้องมี env ใหม่) **`cookieParser` ต้องอยู่ก่อน
 CSRF middleware** (smoke test จับได้: ไม่งั้น 500) smoke test มี assertion ทั้ง foreign Origin และ Origin ถูกแต่ไม่มี token
 
+**CI เพิ่ม (ทดแทน Snyk ตอนโควตาหมด)**: OSV-Scanner, Gitleaks (+ `.gitleaks.toml`), CodeQL — ดู [CI-CD.md](CI-CD.md)
+
 **ที่ยังเหลือ 1 ตัว**: Snyk Code `UseCsurfForExpress` ที่ [app.js](backend/src/app.js) เป็น false positive — rule
 จับจากชื่อแพ็กเกจ `csurf` (deprecated แล้ว) ไม่รู้จัก `csrf-csrf` ไม่เพิ่มแพ็กเกจที่เลิกดูแลเพียงเพื่อเอาใจ scanner
 (`snyk ignore` ใน CLI เขียนเป็น exclude ทั้งไฟล์และไม่มีผลกับ Snyk Code, inline `deepcode ignore` ใช้ได้เฉพาะ IDE

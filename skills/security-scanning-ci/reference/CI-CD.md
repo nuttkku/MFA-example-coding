@@ -40,12 +40,14 @@ flowchart TD
 ## CI — ตรวจสอบอัตโนมัติทุก push/PR
 
 Implementation จริงอยู่ที่ [.github/workflows/ci.yml](.github/workflows/ci.yml) รันทุกครั้งที่ push เข้า
-`main` หรือเปิด Pull Request มี 6 job ที่ต้องผ่านทั้งหมด:
+`main` หรือเปิด Pull Request มี 8 job ใน `ci.yml` (บวก CodeQL แยกอีก workflow) ที่ต้องผ่านทั้งหมด:
 
 | Job | ทำอะไร | ทำไมต้องมี |
 |---|---|---|
 | `audit` | `npm audit --audit-level=high` ทั้ง `backend/`, `frontend/` และ `e2e/` (แยก job ด้วย matrix, `fail-fast: false` ให้เห็นผลครบทุกตัว) | จับ dependency ที่มีช่องโหว่รู้จักแล้วก่อนที่จะหลุดเข้า image |
 | `security-scan` | รัน [Semgrep](https://semgrep.dev) (ผ่าน Docker image `semgrep/semgrep`) ด้วย ruleset `p/security-audit`, `p/secrets`, `p/javascript`, `p/nodejsscan` แล้ว `--error` (fail ถ้าเจอ finding) | จับ pattern ที่เป็นช่องโหว่จริง เช่น GCM ที่ไม่ pin auth tag length, secret ที่ hardcode ในโค้ด — วิธีเดียวกับที่ใช้ตรวจโปรเจกต์นี้จริงตอนพัฒนา (ดู [CLAUDE.md](CLAUDE.md#ผลการสแกนความปลอดภัย)) |
+| `osv-scan` | [OSV-Scanner](https://google.github.io/osv-scanner/) สแกน lockfile ทั้ง 3 โฟลเดอร์กับฐานข้อมูล OSV | เป็นแหล่งข้อมูลช่องโหว่คนละฐานกับ `npm audit` (ทดแทน `snyk test` ตอนโควตา Snyk หมด) |
+| `secret-scan` | [Gitleaks](https://github.com/gitleaks/gitleaks) สแกน git history ทั้งหมด (`fetch-depth: 0`) ตั้งค่าที่ [.gitleaks.toml](.gitleaks.toml) | จับ secret ที่เคย commit แม้ลบออกจากไฟล์ล่าสุดแล้ว |
 | `build` | `docker compose build` — build ทั้ง backend และ frontend image | กัน Dockerfile พังแบบไม่มีใครรู้จนกว่าจะ deploy จริง |
 | `image-scan` | รัน [Trivy](https://trivy.dev) (ผ่าน [aquasecurity/trivy-action](https://github.com/aquasecurity/trivy-action)) สแกน image ที่ build เสร็จของทั้ง backend/frontend หา CRITICAL/HIGH ที่มี fix แล้ว | `audit`/`security-scan` ดูแค่ source กับ `package.json` — ไม่เห็นช่องโหว่ที่มาจาก OS package ของ base image (เช่น `libssl`/`libcrypto` ของ Alpine) หรือ dependency ที่ resolve จริงตอน build เท่านั้นที่ image scan เห็น |
 | `smoke-test` | `docker compose up -d --build` แล้วรัน [scripts/smoke-test.sh](scripts/smoke-test.sh) ยิง API จริงทั้ง flow: login บังคับ 2FA setup → ยืนยันโค้ด TOTP → ได้ backup codes → เปลี่ยนรหัสผ่าน (session เก่าถูก revoke) → refresh token ที่ rotate แล้วใช้ซ้ำถูกปฏิเสธและ revoke ทั้ง family → โค้ด TOTP ที่ใช้แล้วใช้ซ้ำไม่ได้ → backup code ใช้ได้ครั้งเดียว → admin สร้าง user → RBAC ปฏิเสธ user ธรรมดาที่เรียก `/admin/users` (403) → logout แล้ว `/me` เป็น 401 → ใส่โค้ด 2FA ผิด 5 ครั้งแล้วบัญชีถูกล็อก 2FA (403) | Unit test ไม่พอสำหรับระบบที่หัวใจคือ "สถานะไหลผ่าน service หลายตัว" (login → 2FA → session → RBAC) — smoke test นี้คือชุดเดียวกับที่ยืนยัน flow ทั้งหมดด้วยมือตอนพัฒนาฟีเจอร์ 2FA/RBAC/SSO ครั้งแรก แปลงเป็น script ที่รันซ้ำได้ |
@@ -54,6 +56,10 @@ Implementation จริงอยู่ที่ [.github/workflows/ci.yml](.git
 ทั้ง 6 job รันพร้อมกัน (ไม่ block กันเอง) ยกเว้น `image-scan`/`smoke-test`/`ui-test` ที่รอ `build` ผ่านก่อน (ไม่มี
 ประโยชน์จะสแกน/รันสแตกที่ build ไม่ผ่าน) PR จะ merge ได้ก็ต่อเมื่อทุก job เขียวหมด — ไม่มี job ไหนเป็น
 "optional"
+
+**CodeQL** อยู่ใน [.github/workflows/codeql.yml](.github/workflows/codeql.yml) (query suite `security-extended`, รันทุก push/PR และทุกวันจันทร์) ผลขึ้นที่ tab Security → Code scanning ของ GitHub — repo เป็น public จึงใช้ฟรี (ถ้าเปลี่ยนเป็น private ต้องมี GitHub Advanced Security) เป็นตัวแทน `snyk code test` ที่ใกล้ที่สุด (data-flow analysis)
+
+`.gitleaks.toml` allowlist เฉพาะ rule `generic-api-key` กับ `smoke-test.sh` สองไฟล์ (entropy heuristic เข้าใจผิดว่าโค้ด TOTP ที่สร้างตอนรันเป็น key) ไม่ใช่ปิดทั้ง rule
 
 ### Trivy เจอ noise จาก base image เยอะ — จัดการยังไง
 
@@ -96,6 +102,10 @@ cd frontend && npm ci && npm audit --audit-level=high && cd ..
 docker run --rm -v "$PWD:/src" semgrep/semgrep \
   semgrep scan --config p/security-audit --config p/secrets --config p/javascript --config p/nodejsscan \
   --exclude node_modules --exclude "*.md" --error /src
+
+# 2b) OSV + secrets
+docker run --rm -v "$PWD:/src" ghcr.io/google/osv-scanner:latest scan source -r /src
+docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest detect --source /repo --no-banner --redact
 
 # 3) build
 docker compose build
@@ -156,6 +166,17 @@ Snyk สแกน `package.json`/`package-lock.json` แล้วเปิด PR
 ประเมินว่า Merge Risk: High (เช่น major upgrade) โดยไม่อ่านก่อน** — บ่อยครั้งมี non-breaking patch ที่แก้ CVE
 เดียวกันได้ (ดูตัวอย่างรอบ 4 ใน [CLAUDE.md](CLAUDE.md#ผลการสแกนความปลอดภัย): Snyk เสนอ Express 5 เพื่อแก้
 `qs` แต่ Express 4.22.3 ดึง `qs` ที่แก้แล้วมาให้เหมือนกัน)
+
+### รัน Snyk จาก CLI บนเครื่อง
+
+```bash
+snyk auth                              # เปิดเบราว์เซอร์ให้ login ครั้งเดียว
+(cd backend && snyk test)              # dependency (ทำแยกทีละโฟลเดอร์: backend / frontend / e2e)
+snyk code test                         # static analysis ของโค้ดเรา (ใช้ --json เพื่อดู ruleId/บรรทัด)
+```
+
+free tier มีโควตา test ต่อเดือนจำกัด — รวมการรันให้น้อยครั้ง ผล `snyk code` ที่ rule จับจากชื่อแพ็กเกจ
+(เช่น `UseCsurfForExpress`) ดู [CLAUDE.md](CLAUDE.md#ผลการสแกนความปลอดภัย) รอบ 5
 
 ### กดทับ (suppress) finding ของ Semgrep
 

@@ -9,7 +9,7 @@ Files in `reference/`: `ci.yml`, `cd.yml`, `smoke-test.sh`, `ui-test.mjs`, `CI-C
 
 ## Jobs (all required, none optional)
 
-`audit` (npm audit --audit-level=high per package, matrix) - `security-scan` (Semgrep `p/security-audit`,
+`osv-scan` (OSV-Scanner), `secret-scan` (Gitleaks, full history) and a separate CodeQL workflow back up Snyk when its quota runs out - Snyk-free coverage. `audit` (npm audit --audit-level=high per package, matrix) - `security-scan` (Semgrep `p/security-audit`,
 `p/secrets`, `p/javascript`, `p/nodejsscan`, `--error`) - `build` (docker compose build) - then, after build:
 `image-scan` (Trivy CRITICAL/HIGH, `--ignore-unfixed`, `--skip-dirs /usr/local/lib/node_modules/npm`),
 `smoke-test` (curl through the real stack), `ui-test` (Playwright on a **fresh DB**, separate stack).
