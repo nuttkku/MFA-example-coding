@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { requireAuth, requirePreAuth } from '../middleware/auth.middleware.js';
-import { loginLimiter, twoFaLimiter, passkeyOptionsLimiter } from '../middleware/rateLimit.middleware.js';
+import { loginLimiter, twoFaLimiter, passkeyOptionsLimiter, generalLimiter } from '../middleware/rateLimit.middleware.js';
 import * as passkey from '../controllers/passkey.controller.js';
 
 const router = Router();
+
+// Ceiling for every passkey route; the stricter per-route limiters below stack on top.
+router.use(generalLimiter);
 
 // Passwordless login - no prior step.
 router.post('/login/options', passkeyOptionsLimiter, passkey.startLogin);

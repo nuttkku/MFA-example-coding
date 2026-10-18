@@ -169,7 +169,7 @@ for (let i = 0; i < 20; i += 1) {
   newUserTempPassword = await page.inputValue('#reset-password');
   await page.click('.modal button[type=submit]');
   await page.waitForSelector('.modal', { state: 'detached', timeout: 10000 }).catch(() => {});
-  if ((await page.locator('.modal').count()) !== 0) await fail(`generated temporary password rejected: ${newUserTempPassword}`);
+  if ((await page.locator('.modal').count()) !== 0) await fail(`generated temporary password rejected (length ${newUserTempPassword.length})`);
 }
 pass('20 generated temporary passwords all accepted');
 
