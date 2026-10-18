@@ -2,11 +2,7 @@ import { env } from '../config/env.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { hashSecret, verifySecret, DUMMY_PASSWORD_HASH } from '../utils/password.js';
 import { UnauthorizedError, ForbiddenError, ValidationError, ConflictError } from '../utils/errors.js';
-import {
-  loginSchema,
-  twoFaCodeSchema,
-  changePasswordSchema,
-} from '../validators/schemas.js';
+import { loginSchema, twoFaCodeSchema, changePasswordSchema } from '../validators/schemas.js';
 import {
   findByEmail,
   findById,
@@ -250,8 +246,8 @@ export async function requireTotpStepUp(req, code, failureEventType) {
     throw new ForbiddenError('Too many incorrect verification codes. Please try again later.');
   }
 
-  const valid = !looksLikeBackupCode(code)
-    && await verifyTotpCode(user.id, decryptStoredSecret(user.totp_secret_enc), code);
+  const valid =
+    !looksLikeBackupCode(code) && (await verifyTotpCode(user.id, decryptStoredSecret(user.totp_secret_enc), code));
   if (!valid) {
     await recordTwoFactorFailure(req, user, failureEventType);
     throw new ValidationError('Invalid verification code');

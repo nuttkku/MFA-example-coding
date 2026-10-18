@@ -47,6 +47,9 @@ const schema = z.object({
   WEBAUTHN_RP_NAME: z.string().optional(),
   WEBAUTHN_ORIGIN: z.string().url().optional(),
 
+  // Optional shared store for rate-limit counters (several backend instances).
+  REDIS_URL: z.string().url().optional(),
+
   LOGIN_MAX_ATTEMPTS: z.coerce.number().default(5),
   LOGIN_LOCK_MINUTES: z.coerce.number().default(15),
   TWOFA_MAX_ATTEMPTS: z.coerce.number().default(5),

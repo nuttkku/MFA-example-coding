@@ -174,7 +174,11 @@ export async function buildAuthenticationOptions({ userId = null, userVerificati
 // Verifies an assertion. Returns the owning user id on success, or null. When
 // expectedUserId is given (second-factor use) the credential must belong to
 // that user.
-export async function verifyAuthentication(response, expectedChallenge, { expectedUserId = null, requireUserVerification }) {
+export async function verifyAuthentication(
+  response,
+  expectedChallenge,
+  { expectedUserId = null, requireUserVerification },
+) {
   const record = typeof response?.id === 'string' ? await findByCredentialId(response.id) : null;
   if (!record) return { userId: null, reason: 'unknown_credential' };
   if (expectedUserId && record.user_id !== expectedUserId) return { userId: null, reason: 'wrong_user' };
