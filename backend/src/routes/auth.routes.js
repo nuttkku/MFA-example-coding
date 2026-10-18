@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { requireAuth, requirePreAuth } from '../middleware/auth.middleware.js';
-import { loginLimiter, twoFaLimiter } from '../middleware/rateLimit.middleware.js';
+import { loginLimiter, twoFaLimiter, generalLimiter } from '../middleware/rateLimit.middleware.js';
 import * as auth from '../controllers/auth.controller.js';
 
 const router = Router();
+
+// Ceiling for every auth route; the stricter per-route limiters below stack on top.
+router.use(generalLimiter);
 
 router.post('/login', loginLimiter, auth.login);
 
