@@ -631,6 +631,7 @@ CI/CD อยู่ใน [CI-CD.md](CI-CD.md)
 | `ACCESS_TOKEN_SECRET` / `REFRESH_TOKEN_SECRET` / `PRE_AUTH_TOKEN_SECRET` / `SSO_STATE_SECRET` | ต้องเป็นค่าสุ่มยาว ๆ คนละค่ากันทั้ง 4 ตัว (`openssl rand -hex 64`) — หรือรัน `scripts/generate-secrets.sh` ให้ทำให้อัตโนมัติ |
 | `TOTP_ENCRYPTION_KEY` | 64 hex chars (`openssl rand -hex 32`) ใช้เข้ารหัส TOTP secret ในฐานข้อมูล |
 | `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` / `PRE_AUTH_TOKEN_TTL` | อายุ token แต่ละประเภท (ค่า default: `15m` / `7d` / `5m`) |
+| `REDIS_URL` | (optional) เช่น `redis://redis:6379` ให้ rate limiter เก็บ counter ใน Redis ร่วมกันหลาย instance — ไม่ตั้ง = เก็บใน memory ดู `docker-compose.redis.yml` |
 | `TRUST_PROXY` | ปล่อยเป็น `false` ไว้ ถ้าไม่มี reverse proxy จริงอยู่หน้า backend (ค่า default ปลอดภัยกว่า) |
 | `COOKIE_SECURE` | ตั้ง `true` เฉพาะตอนรันผ่าน HTTPS จริง |
 | `LOGIN_MAX_ATTEMPTS` / `LOGIN_LOCK_MINUTES` | นโยบาย account lockout |
@@ -727,8 +728,8 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
 - **ไม่มี "จำเครื่องนี้ไว้" เพื่อข้าม 2FA** — เจตนาให้ 2FA บังคับทุกครั้งที่ login แบบเข้มที่สุด รวมถึง
   login ผ่าน SSO ด้วย
 - **ไม่มี SMS/email OTP** เป็นทางเลือกสำรอง (มีแต่ backup codes) — ลดความซับซ้อนของการต่อ third-party
-- **Rate limiter เก็บ state ใน memory ของ process เดียว** — ถ้า scale เป็นหลาย instance ต้องเปลี่ยนไปใช้
-  shared store อย่าง Redis
+- **Rate limiter เก็บ state ใน memory ของ process เป็นค่าเริ่มต้น** — ถ้ารันหลาย instance ให้ตั้ง `REDIS_URL`
+  (หรือรันคู่ `docker-compose.redis.yml`) เพื่อใช้ counter ร่วมกัน
 - **Passkey ใช้ได้เฉพาะหลังตั้ง TOTP แล้ว** (ไม่มีบัญชีแบบ passkey อย่างเดียว) — ตั้งใจให้ TOTP + backup codes
   เป็นทางกู้บัญชีเสมอ และยังไม่รองรับ conditional UI (passkey autofill ในช่อง email) เพื่อให้โค้ดฝั่ง frontend เรียบง่าย
 - **Account lockout ไม่ครอบคลุม SSO login** — ตั้งใจ (กันไม่ให้ใครแค่รู้ email เหยื่อแล้วยิงรหัสผ่านผิด
@@ -744,7 +745,6 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
 
 - เพิ่ม conditional UI ของ passkey (`autocomplete="username webauthn"` + `useBrowserAutofill`) ให้ browser เสนอ passkey
   ในช่อง email เอง และส่ง Signal API (`PublicKeyCredential.signalUnknownCredential`) ให้ authenticator ลบ passkey ที่ถูกลบฝั่ง server แล้ว
-- ย้าย rate limiter ไปใช้ Redis เพื่อรองรับหลาย instance
 - เพิ่มหน้า "sessions ที่ active อยู่" ให้ผู้ใช้เห็นและ revoke refresh token ของตัวเองได้เป็นรายตัว
 - ทำ `vite build` + nginx multi-stage Dockerfile สำหรับ production
 - เพิ่ม Google/Microsoft/GitHub ผ่าน config `OIDC_*` เดิม (ไม่ต้องเขียนโค้ดใหม่ แค่ใส่ issuer/client id

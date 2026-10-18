@@ -435,8 +435,10 @@ setup บังคับเหมือนบัญชีอื่นทุก�
   แบบเข้มที่สุด ตรงตาม requirement "Force ทุก User" (รวม login ผ่าน SSO ด้วย)
 - ไม่มี SMS/email OTP เป็น fallback (มีแต่ backup codes) — ลดความซับซ้อนของการต่อ third-party service
   ในตัวอย่างเพื่อการเรียนรู้
-- Rate limiter ใช้ in-memory store ของ `express-rate-limit` (ไม่ผ่าน Redis) — พอสำหรับ instance เดียว
-  ถ้าจะ scale เป็นหลาย instance ต้องเปลี่ยนไปใช้ shared store
+- Rate limiter ใช้ in-memory store เป็นค่าเริ่มต้น (พอสำหรับ instance เดียว) — ถ้าตั้ง `REDIS_URL` จะใช้ Redis ร่วมกันผ่าน
+  `rate-limit-redis` (`config/redis.js` + `docker-compose.redis.yml`) แต่ละ limiter มี prefix ของตัวเอง (`rl:login:` ฯลฯ)
+  ใช้ `rate-limit-redis@4` เพราะ v5+ บังคับ `express-rate-limit` v8 (major upgrade แยกเรื่อง) Redis ล่มตอน request → route ที่มี limiter
+  ตอบ 500 (ตั้งใจไม่ fail-open) เชื่อมต่อด้วย top-level await ตอน import เพราะ store โหลด Lua script ทันทีที่สร้าง
 - **Account lockout ไม่ครอบคลุม SSO login** (ดูเหตุผลเต็มในหัวข้อ SSO ด้านบน) — ตั้งใจ ไม่ใช่ช่องโหว่ที่ลืมปิด (เช่นเดียวกับ passkey login)
 - **ไม่มีบัญชีแบบ passkey อย่างเดียว** — ต้องตั้ง TOTP ก่อนลงทะเบียน passkey ได้ เพื่อให้มีทางกู้บัญชีเสมอ และยังไม่ทำ
   conditional UI (passkey autofill) / Signal API ให้ frontend เรียบง่าย
