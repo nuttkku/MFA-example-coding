@@ -13,7 +13,8 @@
 > 3. ถ้า flow ใหม่กระทบ login/2FA/RBAC ให้เพิ่ม assertion ใน [scripts/smoke-test.sh](scripts/smoke-test.sh)
 >    (ระดับ API) และ/หรือ [e2e/ui-test.mjs](e2e/ui-test.mjs) (ผ่านหน้าเว็บจริงด้วย Playwright) ด้วย ไม่ใช่แค่
 >    ทดสอบมือแล้วปล่อยผ่าน — สองตัวนี้คือ regression test ที่ CI มี
-> 4. **อัปเดตไฟล์นี้ (CLAUDE.md)** ด้วยการตัดสินใจ/เหตุผลใหม่ที่เกิดขึ้น และอัปเดต [README.md](README.md)
+> 4. ถ้าแก้โค้ดที่มี skill ตรงกันใน [skills/](skills/README.md) (2FA/passkey/RBAC/SSO/session/CSRF/CI/frontend/compose) ให้รีเฟรช `reference/` และ SKILL.md ด้วย
+> 5. **อัปเดตไฟล์นี้ (CLAUDE.md)** ด้วยการตัดสินใจ/เหตุผลใหม่ที่เกิดขึ้น และอัปเดต [README.md](README.md)
 >    ถ้ากระทบสิ่งที่ผู้ใช้เห็น (ขั้นตอนติดตั้ง/ตัวแปร env/API/flow) แล้ว commit + push เสมอ — นี่คือ
 >    ข้อตกลงถาวรของโปรเจกต์นี้ ไม่ต้องรอให้สั่งซ้ำทุกครั้ง
 
@@ -343,7 +344,7 @@ backend/src/
 │                 permissions.js (RBAC map), identityProviders.js (SSO registry, soft-fail)
 ├── db/           migrations/001_init.sql ... 004_passkeys.sql, migrate.js (runner + wait-for-db),
 │                 seed.js (bootstrap admin)
-├── middleware/   auth (access/pre-auth cookie verify), rbac (permission check), rateLimit, error
+├── middleware/   auth (access/pre-auth cookie verify), rbac (permission check), rateLimit (login/2fa/passkey + generalLimiter), csrf (csrf-csrf double-submit + Origin guard), error
 ├── validators/   schemas.js (zod schema ของทุก request body)
 ├── services/     user/token/twofa/passkey/audit + oidcClient/facebook/sso (SSO) — business logic ทั้งหมด
 ├── controllers/  auth, admin, sso, passkey (.controller.js) — บาง แค่ประกอบ
@@ -353,6 +354,18 @@ backend/src/
 
 Controllers ไม่คุย DB ตรง ๆ — เรียกผ่าน services เท่านั้น ถ้าจะเพิ่ม endpoint ใหม่ ควรเพิ่มฟังก์ชันใน
 service ที่เกี่ยวข้องก่อน แล้ว controller ค่อยเรียกใช้
+
+## skills/ และไฟล์ที่เพิ่มรอบหลัง
+
+- `skills/<ชื่อ>/SKILL.md` + `reference/` = Claude Code skill 9 ตัวที่สกัดจากตัวอย่างใน repo (ดู [skills/README.md](skills/README.md))
+  `reference/` เป็น**สำเนา snapshot** ของไฟล์จริง — **แก้โค้ดจริงที่กระทบ skill ใดแล้วต้องรีเฟรชสำเนา + ปรับ SKILL.md ด้วย**
+  (รีเฟรชได้ด้วย loop `cp` จากไฟล์ที่ basename ตรงกัน) `.snyk` ตั้ง `exclude: code: skills/**` เพื่อไม่ให้ Snyk Code
+  นับสำเนาซ้ำ (เจอ finding ซ้ำที่ `skills/*/reference/` ตอนแรก)
+- `.github/dependabot.yml` อัปเดต npm (backend/frontend/e2e), GitHub Actions, Dockerfile รายสัปดาห์ (grouped minor/patch) —
+  ทางอัปเดต dependency ที่ไม่พึ่งโควตา Snyk; `.github/workflows/codeql.yml` + job `osv-scan`/`secret-scan` ใน `ci.yml` + `.gitleaks.toml`
+- `generalLimiter` (600 req/15 นาที ต่อ IP) ครอบ router ของ `/auth`, `/auth/passkeys`, `/admin` — limiter เฉพาะ route ซ้อนทับเข้าไป
+  (CodeQL `js/missing-rate-limiting` จับ route ที่ไม่มี limiter)
+- `logger.js` เปลี่ยน CR/LF ใน string argument เป็นช่องว่าง (กัน log injection)
 
 ## โครงสร้างไฟล์ frontend
 
@@ -597,6 +610,16 @@ plugin) ต้อง ignore ที่เว็บ Snyk พร้อมเหต�
 | Smoke test ส่วน 2FA lockout ได้ 429 แทน 403 หลังเพิ่ม assertion ของ passkey | Smoke test | request ที่ fail ทุกตัวบน route ที่มี `twoFaLimiter` (10 ครั้ง/5 นาที ต่อ IP) กินโควตาเดียวกันทั้ง script — ย้าย check "ไม่มี session → 401" ไปที่ `GET /api/auth/passkeys` (ไม่มี limiter) และใส่ comment เตือนไว้ใน script |
 
 `npm audit` ทั้ง backend/frontend หลังเพิ่ม `@simplewebauthn/*` = 0 ตัว
+
+### รอบ 7 (CodeQL บน `main` หลัง merge)
+
+CodeQL (query suite `security-extended`) เจอสิ่งที่ Snyk Code ไม่เจอ: `missing-rate-limiting` ของ route passkey/auth/admin
+(แก้ด้วย `generalLimiter`), `clear-text-logging` ของรหัสผ่านชั่วคราวใน `e2e/ui-test.mjs` (เอาออกจากข้อความ fail ทั้งหมด —
+แค่ `.length` ก็ยังถูก flag), `missing-token-validation` ที่ `app.js` (**false positive** — csrf-csrf ไม่ถูกรู้จักตามชื่อ เช่นเดียวกับ Snyk;
+dismiss ใน GitHub Code scanning แล้ว) และ `log-injection` ที่ logger — sanitize แล้วแต่ CodeQL ยังรายงาน (ตามไม่ทันผ่าน `map`) ยังเปิดอยู่
+
+**บทเรียนที่ต้องจำ**: (1) retry ของ CSRF ต้องเฉพาะ `code: 'csrf'` ไม่ใช่ทุก 403 (2) บน Windows รัน smoke test ใน Linux container
+(3) Semgrep ใน container อาจสแกนแค่ไม่กี่ไฟล์ ให้ระบุ path แล้วดู `Targets scanned` (4) zod 4: `z.record(z.string(), z.unknown())`
 
 ## การทดสอบที่ทำไปแล้ว
 
