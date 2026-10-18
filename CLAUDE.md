@@ -361,6 +361,7 @@ service ที่เกี่ยวข้องก่อน แล้ว control
   **มีสำเนาใน `.claude/skills/` ด้วย** ให้ Claude Code โหลดเองหลัง clone — แก้ skill ต้องแก้ทั้งสองที่ (job `skills-sync` ใน CI ใช้ `diff -r`
   จับถ้าไม่ตรงกัน) CodeQL ข้ามทั้งสองโฟลเดอร์ (`.github/codeql/codeql-config.yml`), Snyk ข้ามผ่าน `.snyk`, Gitleaks allowlist ใน `.gitleaks.toml`
 - GitHub Pages เสิร์ฟ `docs/` จาก `main` (<https://nuttkku.github.io/MFA-example-coding/>) — `docs/index.html` redirect ไป `features-canvas.html`
+- `main` มี branch protection: บังคับ check 17 ตัว (ดู [CI-CD.md](CI-CD.md#branching-และ-versioning)) — เปลี่ยนชื่อ job ใน CI ต้องแก้ required checks ด้วย
 - [SECURITY.md](SECURITY.md) = ช่องทางแจ้งช่องโหว่ (GitHub private vulnerability reporting)
   `reference/` เป็น**สำเนา snapshot** ของไฟล์จริง — **แก้โค้ดจริงที่กระทบ skill ใดแล้วต้องรีเฟรชสำเนา + ปรับ SKILL.md ด้วย**
   (รีเฟรชได้ด้วย loop `cp` จากไฟล์ที่ basename ตรงกัน) `.snyk` ตั้ง `exclude: code: skills/**` เพื่อไม่ให้ Snyk Code
