@@ -790,6 +790,8 @@ docker run --rm --network container:<ชื่อ frontend container> -e BASE_UR
 
 ### ใช้เฉพาะบางส่วนผ่าน Skills
 
+> 🗺 ภาพรวมทุก feature ที่หยิบไปใช้ได้ (ขั้นตอน, กติกาที่ห้ามพลาด, ไฟล์ที่ต้องดู, skill ที่ตรงกัน) อยู่ที่ [docs/features-canvas.html](docs/features-canvas.html) — เปิดไฟล์นี้ในเบราว์เซอร์ได้เลย ไม่ต้อง build
+
 ตัวอย่างแต่ละส่วนถูกสกัดเป็น Claude Code skill ที่ [skills/](skills/README.md) — แต่ละโฟลเดอร์มี `SKILL.md`
 (กฎการออกแบบ + จุดที่เคยพลาดจริง) และ `reference/` (ไฟล์ source จริงให้ copy ไปปรับ):
 
