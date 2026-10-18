@@ -211,8 +211,7 @@ Dockerfile/เปลี่ยน endpoint/เปลี่ยนหน้าเ�
 
 ## แนวทางต่อยอด CI/CD
 
-- เพิ่ม Dependabot (`.github/dependabot.yml`) ให้เปิด PR อัปเดต dependency อัตโนมัติ แล้วให้ `ci.yml`
-  ตรวจสอบ PR นั้นเหมือน PR ปกติ
+- ~~เพิ่ม Dependabot~~ — เพิ่มแล้ว ([.github/dependabot.yml](.github/dependabot.yml)): npm ทั้ง 3 โฟลเดอร์ + GitHub Actions + Dockerfile รายสัปดาห์ จัดกลุ่ม minor/patch เป็น PR เดียว ทุก PR ผ่าน `ci.yml` เหมือน PR ปกติ (ไม่พึ่งโควตา Snyk) major upgrade จะมาเป็น PR แยก ต้องอ่านก่อน merge
 - เพิ่ม job แยกสำหรับ scan `docker-compose.keycloak.yml` (ทดสอบ Keycloak flow แบบ headless เช่นใช้
   Playwright กรอกฟอร์ม login ของ Keycloak จริง)
 - เพิ่ม staging environment: deploy image ที่ build จาก `main` ไปที่ staging อัตโนมัติทุกครั้งที่ merge
