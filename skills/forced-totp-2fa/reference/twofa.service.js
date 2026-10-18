@@ -9,8 +9,14 @@ import { setTotpSecretPending, claimTotpStep } from './user.service.js';
 
 authenticator.options = { window: 1 };
 
+// 20 bytes = 160 bits, the shared-secret length RFC 4226 (s.4) recommends.
+// otplib 12 defaults to 10 bytes (80 bits), which otplib 13 now rejects as
+// too short. Secrets already stored at 10 bytes keep verifying; only new
+// setups and admin resets get the longer secret.
+export const TOTP_SECRET_BYTES = 20;
+
 export function generateTotpSecret() {
-  return authenticator.generateSecret();
+  return authenticator.generateSecret(TOTP_SECRET_BYTES);
 }
 
 export async function buildQrCode(secretBase32, email) {

@@ -87,6 +87,8 @@ token" (JWT อายุสั้น 5 นาที เก็บใน httpOnly 
 2. **`stage: 'verify'`** — ถ้าตั้ง 2FA ไว้แล้ว → frontend พาไปหน้า `/2fa/verify` → กรอกโค้ด TOTP
    หรือ backup code ที่ `POST /api/auth/2fa/verify` → สำเร็จจึงออก session เต็ม
 
+**TOTP secret ยาว 20 bytes (160 bit)** ตามที่ RFC 4226 §4 แนะนำ (`TOTP_SECRET_BYTES` ใน `twofa.service.js`) — เดิมใช้ค่าเริ่มต้นของ otplib 12 คือ 10 bytes (80 bit) เจอตอน Dependabot อัป otplib ของ e2e เป็น 13 ซึ่งปฏิเสธ secret ที่สั้นกว่า 16 bytes secret เดิมใน DB ยังใช้ได้ (verify ไม่สนความยาว) เฉพาะการตั้งใหม่/admin reset ที่ได้ secret ยาว backend ยังใช้ otplib 12 (`checkDelta` ของ replay protection ไม่มีใน v13 แบบเดิม) ส่วน e2e ใช้ v13 (`generateSync({ secret })`)
+
 **โค้ด TOTP ใช้ได้ครั้งเดียว** — `verifyTotpCode(userId, secret, code)` ใน `twofa.service.js` หา
 time-step ของโค้ดด้วย `checkDelta()` แล้ว `claimTotpStep()` (conditional `UPDATE ... WHERE
 totp_last_used_step < $step`) ต้องสำเร็จด้วยถึงจะนับว่าถูก — `authenticator.check()` เฉย ๆ ของ otplib เป็น
