@@ -34,7 +34,7 @@
     "zod": "^4.6.6"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "eslint": "^9.39.5",
     "globals": "^17.13.0",
     "nodemon": "^3.1.4"
