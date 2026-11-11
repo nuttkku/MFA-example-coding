@@ -272,6 +272,14 @@ session ใหม่ที่เพิ่งได้จากการเปล
 — การเปลี่ยนรหัสผ่านมักเป็นการตอบสนองต่อการสงสัยว่าบัญชีหลุด session เก่าจึงไม่ควรอยู่ต่อ (access token
 เดิมที่ออกไปแล้วยังใช้ได้จนหมดอายุ 15 นาที เพราะเป็น stateless JWT — ข้อจำกัดที่รู้อยู่แล้ว)
 
+**Frontend refresh เอง** (`api.js`): ได้ `401` → `POST /auth/refresh` หนึ่งครั้งแล้วยิง request เดิมซ้ำ — เดิมไม่มีเลย
+ผู้ใช้หลุดทุก 15 นาทีทั้งที่ refresh cookie อายุ 7 วัน (Gemini review ชี้) ยกเว้น path ที่ 401 คือคำตอบจริง (`NO_SESSION_REFRESH`:
+login, refresh, logout, ขั้น pre-auth 2FA, passkey login/2FA — replay พวกนี้อาจเผา state ใช้ครั้งเดียว) **refresh ห้ามแข่งกัน**: reuse
+detection ข้างบนจะมอง refresh สองตัวที่ใช้ token เดียวกันเป็นการขโมยแล้ว revoke ทุก session จึงรวม refresh ในแท็บเดียวเป็น promise เดียว
+และใช้ `navigator.locks` ข้ามแท็บ (แท็บที่ได้ lock ทีหลังส่ง cookie ตัวใหม่ที่ rotate แล้ว) เช็ค prefix ด้วย `startsWith` ไม่ใช่ regex
+(Semgrep `regex_dos` บล็อก — แนวเดียวกับรอบ 5) UI test ลบ cookie `access_token` แล้วต้องยังอยู่หน้า profile
+`issueRefreshCookie` ลบแถว `refresh_tokens` ที่หมดอายุของ user นั้นทุกครั้งที่ออกตัวใหม่ (แถวที่ rotate แล้วแต่ยังไม่หมดอายุต้องเก็บไว้ให้ reuse detection)
+
 ## ทำไม hash บางอย่าง แต่เข้ารหัส (encrypt) บางอย่าง
 
 | ข้อมูล | วิธีเก็บ | เหตุผล |
@@ -366,12 +374,18 @@ service ที่เกี่ยวข้องก่อน แล้ว control
 - `main` มี branch protection: บังคับ check 17 ตัว (ดู [CI-CD.md](CI-CD.md#branching-และ-versioning)) — เปลี่ยนชื่อ job ใน CI ต้องแก้ required checks ด้วย
 - [SECURITY.md](SECURITY.md) = ช่องทางแจ้งช่องโหว่ (GitHub private vulnerability reporting)
   `reference/` เป็น**สำเนา snapshot** ของไฟล์จริง — **แก้โค้ดจริงที่กระทบ skill ใดแล้วต้องรีเฟรชสำเนา + ปรับ SKILL.md ด้วย**
-  (รีเฟรชได้ด้วย loop `cp` จากไฟล์ที่ basename ตรงกัน) `.snyk` ตั้ง `exclude: code: skills/**` เพื่อไม่ให้ Snyk Code
+  ด้วย `bash scripts/check-skill-references.sh --fix` ซึ่งอ่านคู่ไฟล์จาก `scripts/skill-references.txt` (ระบุ source ทีละไฟล์ชัด ๆ —
+  **เลิกใช้ loop `cp` ตาม basename** เพราะเคยเอา `backend/package.json` ไปทับ `package.json` ของ skill frontend) job `skills-sync` รัน
+  script นี้แบบไม่มี `--fix` ด้วย ไฟล์ใน `reference/` ที่ไม่มีใน manifest ก็ fail `.snyk` ตั้ง `exclude: code: skills/**` เพื่อไม่ให้ Snyk Code
   นับสำเนาซ้ำ (เจอ finding ซ้ำที่ `skills/*/reference/` ตอนแรก)
-- `.github/dependabot.yml` อัปเดต npm (backend/frontend/e2e), GitHub Actions, Dockerfile รายสัปดาห์ (grouped minor/patch) —
+- `.github/dependabot.yml` อัปเดต npm (backend/frontend/e2e), GitHub Actions, Dockerfile รายสัปดาห์ (grouped minor/patch;
+  major ของ `eslint` + `@eslint/*` รวมเป็น group เดียวเพราะเป็น peer กัน แยก PR แล้วพังทั้งคู่; **ignore major ของ `otplib` ฝั่ง backend**
+  เพราะ v13 ไม่มี `checkDelta()` แบบเดิมที่ replay protection ใช้ ต้องย้ายเองพร้อมแก้ `twofa.service.js`) —
   ทางอัปเดต dependency ที่ไม่พึ่งโควตา Snyk; `.github/workflows/codeql.yml` + job `osv-scan`/`secret-scan` ใน `ci.yml` + `.gitleaks.toml`
 - `generalLimiter` (600 req/15 นาที ต่อ IP) ครอบ router ของ `/auth`, `/auth/passkeys`, `/admin` — limiter เฉพาะ route ซ้อนทับเข้าไป
-  (CodeQL `js/missing-rate-limiting` จับ route ที่ไม่มี limiter)
+  (CodeQL `js/missing-rate-limiting` จับ route ที่ไม่มี limiter) **ไม่ต้องใส่ใน `sso.routes.js`**: `authRoutes` mount ที่ `/api/auth` และ
+  `router.use()` ของมันทำงานกับทุก request ใต้ `/api/auth/*` รวม `/api/auth/sso/*` อยู่แล้ว (ทดสอบแล้ว) ใส่ซ้ำจะนับสองครั้ง —
+  passkey router ที่ใส่ไว้เพื่อ CodeQL จึงถูกนับสองครั้งอยู่ (เพดานจริง ~300) ยอมรับได้
 - `logger.js` เปลี่ยน CR/LF ใน string argument เป็นช่องว่าง (กัน log injection)
 
 ## โครงสร้างไฟล์ frontend
@@ -629,6 +643,17 @@ CodeQL (query suite `security-extended`) เจอสิ่งที่ Snyk Cod
 (แก้ด้วย `generalLimiter`), `clear-text-logging` ของรหัสผ่านชั่วคราวใน `e2e/ui-test.mjs` (เอาออกจากข้อความ fail ทั้งหมด —
 แค่ `.length` ก็ยังถูก flag), `missing-token-validation` ที่ `app.js` (**false positive** — csrf-csrf ไม่ถูกรู้จักตามชื่อ เช่นเดียวกับ Snyk;
 dismiss ใน GitHub Code scanning แล้ว) และ `log-injection` ที่ logger — sanitize แล้วแต่ CodeQL ยังรายงาน (ตามไม่ทันผ่าน `map`) ยังเปิดอยู่
+
+### รอบ 8 (ตรวจตาม review ของ Gemini)
+
+| จุดที่เจอ | เครื่องมือ | การแก้ |
+|---|---|---|
+| `body-parser` 2.3.0 DoS (high, GHSA-27r3-jxmh-p828) ทำ `audit`/OSV/Trivy backend แดงทุก PR | `npm audit`, OSV, Trivy | `npm audit fix` → 2.4.0 |
+| `minimatch` 10.x (ผ่าน `nodemon`) DoS (moderate) — ไม่มี 10.x ที่แก้ | `npm audit`, OSV | `overrides: { nodemon: { minimatch: ^11.0.1 } }` (nodemon ใช้แค่ named export `minimatch` ที่ v11 ยังมี) ทดสอบแล้วว่าแก้ไฟล์แล้ว nodemon restart |
+| `deepmerge` prototype poisoning (low) ผ่าน `@sveltejs/vite-plugin-svelte` — ยังไม่มีเวอร์ชันแก้ | OSV | `frontend/osv-scanner.toml` ignore พร้อมเหตุผล + `ignoreUntil` (ใช้แค่ merge config ของเราตอน build ไม่มี input ผู้ใช้ ไม่อยู่ใน bundle) |
+| `skills/*/reference/` 7 ไฟล์ล้าหลัง/ผิดตัว (`package.json` ของ skill frontend เป็นของ backend) | Gemini | manifest + `check-skill-references.sh` ใน CI |
+| Frontend ไม่เคยเรียก `/auth/refresh` | Gemini | ดูหัวข้อ Token/Cookie |
+| `image-scan` ไม่มี `fail-fast: false` — backend แดงแล้ว frontend ถูก cancel | Gemini | เพิ่ม |
 
 **บทเรียนที่ต้องจำ**: (1) retry ของ CSRF ต้องเฉพาะ `code: 'csrf'` ไม่ใช่ทุก 403 (2) บน Windows รัน smoke test ใน Linux container
 (3) Semgrep ใน container อาจสแกนแค่ไม่กี่ไฟล์ ให้ระบุ path แล้วดู `Targets scanned` (4) zod 4: `z.record(z.string(), z.unknown())`

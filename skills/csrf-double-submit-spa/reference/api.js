@@ -37,6 +37,40 @@ async function readJson(res) {
   return isJson ? res.json() : null;
 }
 
+// A 401 from these is a real answer (wrong password, pre-auth 2FA stage, rejected
+// passkey, the refresh itself) - not an expired access token, so never refresh
+// and replay them. Replaying a passkey/2FA attempt could also burn one-time state.
+const NO_SESSION_REFRESH = [
+  '/auth/login',
+  '/auth/refresh',
+  '/auth/logout',
+  '/auth/2fa/setup', // also covers /auth/2fa/setup/confirm
+  '/auth/2fa/verify',
+  '/auth/passkeys/login/',
+  '/auth/passkeys/2fa/',
+];
+const refreshable = (path) => !NO_SESSION_REFRESH.some((prefix) => path.startsWith(prefix));
+
+// The access cookie lives 15 minutes, the refresh cookie 7 days. The backend
+// rotates the refresh token on every use and treats a second use of the same
+// token as theft (revokes every session), so two refreshes must never race:
+// requests in this tab share one in-flight refresh, and the Web Lock makes
+// other tabs wait - by the time they get the lock the cookie jar already holds
+// the rotated token.
+let refreshInFlight = null;
+
+function refreshSession() {
+  const run = () =>
+    request('/auth/refresh', { method: 'POST' }).then(
+      () => true,
+      () => false,
+    );
+  refreshInFlight ??= (navigator.locks ? navigator.locks.request('mfa-session-refresh', run) : run()).finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
 async function request(path, { method = 'GET', body } = {}) {
   const unsafe = method !== 'GET';
   let res = await send(path, method, body, unsafe ? await getCsrfToken() : null);
@@ -46,6 +80,11 @@ async function request(path, { method = 'GET', body } = {}) {
   // disabled") is a real answer, and replaying it could consume one-time state.
   if (unsafe && res.status === 403 && data?.code === 'csrf') {
     res = await send(path, method, body, await getCsrfToken(true));
+    data = await readJson(res);
+  }
+  // Expired access token: get a new one with the refresh cookie and retry once.
+  if (res.status === 401 && refreshable(path) && (await refreshSession())) {
+    res = await send(path, method, body, unsafe ? await getCsrfToken() : null);
     data = await readJson(res);
   }
 

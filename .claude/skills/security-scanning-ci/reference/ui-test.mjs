@@ -116,6 +116,26 @@ const adminSecret = await completeSetup();
 await changePassword(ADMIN_PASSWORD, ADMIN_NEW_PASSWORD);
 await check(page.waitForSelector('h1:has-text("Welcome")'), 'dashboard greets the user');
 
+console.log('--- admin: expired access token is renewed from the refresh cookie ---');
+// Dropping the 15-minute access cookie is what the browser does once it expires;
+// the 7-day refresh cookie must carry the session on (api.js refresh-and-retry).
+await page.context().clearCookies({ name: 'access_token' });
+await page.goto('about:blank');
+const refreshed = page.waitForResponse((r) => r.url().endsWith('/api/auth/refresh'), { timeout: 10000 });
+await page.goto(`${BASE_URL}/#/profile`);
+await check(
+  refreshed.then((r) => (r.ok() ? r : Promise.reject(new Error(`refresh ${r.status()}`)))),
+  'api.js refreshes the session after a 401',
+);
+await check(
+  page.waitForSelector('h1:has-text("Your profile")'),
+  'expired access token is refreshed instead of logging out',
+);
+if (!page.url().includes('#/profile')) await fail('expected to stay on /profile after the refresh');
+const renewed = (await page.context().cookies()).map((c) => c.name);
+if (!renewed.includes('access_token')) await fail('refresh did not issue a new access_token cookie');
+pass('new access_token cookie issued');
+
 console.log('--- admin: user management ---');
 await page.click('a[href="#/admin/users"]');
 await expectRoute('#/admin/users', 'navbar link to users page');

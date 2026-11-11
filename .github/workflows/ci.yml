@@ -98,6 +98,9 @@ jobs:
       # skills/ is the human-facing copy, .claude/skills/ is what Claude Code
       # loads automatically after a clone - they must never drift apart.
       - run: diff -r -x README.md skills .claude/skills
+      # reference/ files are snapshots of real files; the manifest names each
+      # source explicitly (a basename match once copied the wrong package.json).
+      - run: bash scripts/check-skill-references.sh
 
   build:
     name: Build Docker images
@@ -111,6 +114,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     strategy:
+      # Report both images even when one of them fails.
+      fail-fast: false
       matrix:
         include:
           # npm ships its own bundled dependency tree (tar/glob/minimatch/...)

@@ -37,7 +37,7 @@ Facebook / LINE / Keycloak / OpenID Connect ทั่วไป — เขีย�
 | ส่วน | เทคโนโลยี |
 |---|---|
 | Frontend | [Svelte 5](https://svelte.dev) + [Vite 8](https://vitejs.dev) + [svelte-spa-router](https://github.com/ItalyPaleAle/svelte-spa-router) |
-| Backend | [Node.js 20](https://nodejs.org) + [Express 5](https://expressjs.com) |
+| Backend | [Node.js 26](https://nodejs.org) + [Express 5](https://expressjs.com) |
 | Database | [PostgreSQL 16](https://www.postgresql.org) (ผ่าน `pg` driver, raw SQL — ไม่ใช้ ORM เพื่อให้เห็น query ตรง ๆ) |
 | 2FA | [otplib](https://github.com/yeojz/otplib) (TOTP) + [qrcode](https://github.com/soldair/node-qrcode) |
 | Passkey | [SimpleWebAuthn](https://simplewebauthn.dev) (`@simplewebauthn/server` + `@simplewebauthn/browser`) |
@@ -558,6 +558,11 @@ revoke (mark ในตาราง `refresh_tokens`) แล้วออกตั
 คนนั้นทันที เพื่อบังคับให้ login ใหม่ — เฉพาะ token ที่ถูก **rotate** ไปแล้วเท่านั้น (`replaced_by` มีค่า)
 ส่วน token ที่ถูก revoke ตามปกติ (logout/เปลี่ยนรหัสผ่าน/admin) แค่ใช้ไม่ได้ ไม่ลาก session อื่นไปด้วย
 
+Frontend เรียก `/api/auth/refresh` ให้เอง: request ไหนได้ `401` (access token 15 นาทีหมดอายุ) `api.js` จะ refresh
+หนึ่งครั้งแล้วยิง request เดิมซ้ำ ผู้ใช้ที่เปิดหน้าเว็บทิ้งไว้จึงไม่หลุดจนกว่า refresh token (7 วัน) จะหมด ยกเว้น path ที่
+401 เป็นคำตอบจริง (login, ขั้น 2FA, passkey login) refresh ที่ยิงพร้อมกันจะถูกรวมเป็นครั้งเดียว และข้ามแท็บก็ทำทีละแท็บ
+(Web Locks) เพราะ refresh token ตัวเดียวถูกใช้สองครั้งจะเข้าเงื่อนไข "ถูกขโมย" ข้างบน
+
 **เปลี่ยนรหัสผ่านแล้ว session อื่นทั้งหมดของบัญชีนั้นถูก revoke** (refresh token ทุกเครื่อง) แล้วออก session
 ใหม่ให้เครื่องที่เปลี่ยนรหัสเท่านั้น
 
@@ -750,8 +755,6 @@ smoke test แบบ end-to-end ([scripts/smoke-test.sh](scripts/smoke-test.sh))
 - เพิ่ม Google/Microsoft/GitHub ผ่าน config `OIDC_*` เดิม (ไม่ต้องเขียนโค้ดใหม่ แค่ใส่ issuer/client id
   ของ provider นั้น)
 - บังคับ step-up (ใส่โค้ด TOTP อีกครั้ง) ก่อนเปลี่ยนรหัสผ่านด้วย (ตอนนี้บังคับแล้วเฉพาะ regenerate backup codes และการเพิ่ม passkey)
-- เพิ่ม Dependabot ต่อจาก pipeline ที่มีอยู่ใน [CI-CD.md](CI-CD.md) (container image scanning ด้วย
-  Trivy มีอยู่แล้ว)
 
 ## 🙏 Credits
 
@@ -783,7 +786,7 @@ docker compose up -d --build          # http://localhost:5173
 
 ```bash
 docker run --rm --network container:<ชื่อ frontend container> -e BASE_URL=http://localhost:5173 \
-  -v "$PWD/scripts:/s:ro" node:20-alpine sh -c "apk add -q bash curl; tr -d '\r' < /s/smoke-test.sh > /tmp/t.sh; bash /tmp/t.sh"
+  -v "$PWD/scripts:/s:ro" node:26-alpine sh -c "apk add -q bash curl; tr -d '\r' < /s/smoke-test.sh > /tmp/t.sh; bash /tmp/t.sh"
 ```
 
 ### ใช้เฉพาะบางส่วนผ่าน Skills
