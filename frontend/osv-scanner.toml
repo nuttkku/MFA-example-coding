@@ -1,0 +1,13 @@
+# OSV-Scanner reads this file for the lockfile in this directory (CI job `osv-scan`).
+# Every entry needs a reason and an expiry date, so it is looked at again instead
+# of being forgotten.
+
+[[IgnoredVulns]]
+# deepmerge prototype poisoning (low). Pulled in only by @sveltejs/vite-plugin-svelte
+# (dev dependency), which merges our own svelte/vite config at build time. No user
+# input ever reaches deepmerge, and nothing from it ships to the browser bundle.
+# No fixed deepmerge release exists yet (all >=4.2.0 affected), so `npm audit fix`
+# cannot resolve it. Drop this entry once vite-plugin-svelte or deepmerge ships a fix.
+id = "GHSA-gcqx-w48m-w2h4"
+ignoreUntil = 2027-02-11
+reason = "Build-time only (vite-plugin-svelte config merge), no user input, no fixed version available"

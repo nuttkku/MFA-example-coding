@@ -37,6 +37,12 @@ object spreads. Use `jwt.verify`, not `jwt.decode`, even to read back `exp` of a
 - `/refresh` re-checks the user exists and is not disabled before issuing.
 - Password change: revoke all refresh tokens, then issue a fresh session for the current device.
 - Known limit: already-issued access JWTs stay valid until they expire (stateless).
+- Prune the user's expired `refresh_tokens` rows when issuing a new one (they can never verify again); keep
+  rotated-but-unexpired rows, reuse detection needs them.
+- The SPA must actually call `/refresh`: on a 401 (except login/2FA/passkey-login/refresh paths, where 401 is
+  the answer) refresh once and replay. Share one in-flight refresh per tab and serialize across tabs with
+  `navigator.locks` - two refreshes with the same token look exactly like theft and revoke every session.
+  See `api.js` in skill `csrf-double-submit-spa`.
 
 ## Other hardening
 

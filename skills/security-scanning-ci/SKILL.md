@@ -17,7 +17,8 @@ Files in `reference/`: `ci.yml`, `cd.yml`, `codeql.yml` + `codeql-config.yml`, `
 CD: tag `vX.Y.Z` -> build and push `:X.Y.Z` + `:latest` to GHCR; deploy left pluggable.
 
 Also: `quality` (ESLint + `prettier --check` + backend unit tests - fastest job, no Docker), `keycloak-test`
-(Playwright fills the real Keycloak login form; see skill `oidc-sso-login`), `skills-sync` (`diff -r` of two skill copies).
+(Playwright fills the real Keycloak login form; see skill `oidc-sso-login`), `skills-sync` (`diff -r` of two skill copies, plus `scripts/check-skill-references.sh` that compares every
+`reference/` snapshot with its source listed in `scripts/skill-references.txt`).
 
 ## Unit tests without a database
 
