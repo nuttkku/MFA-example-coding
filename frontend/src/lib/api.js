@@ -37,20 +37,6 @@ async function readJson(res) {
   return isJson ? res.json() : null;
 }
 
-// A 401 from these is a real answer (wrong password, pre-auth 2FA stage, rejected
-// passkey, the refresh itself) - not an expired access token, so never refresh
-// and replay them. Replaying a passkey/2FA attempt could also burn one-time state.
-const NO_SESSION_REFRESH = [
-  '/auth/login',
-  '/auth/refresh',
-  '/auth/logout',
-  '/auth/2fa/setup', // also covers /auth/2fa/setup/confirm
-  '/auth/2fa/verify',
-  '/auth/passkeys/login/',
-  '/auth/passkeys/2fa/',
-];
-const refreshable = (path) => !NO_SESSION_REFRESH.some((prefix) => path.startsWith(prefix));
-
 // The access cookie lives 15 minutes, the refresh cookie 7 days. The backend
 // rotates the refresh token on every use and treats a second use of the same
 // token as theft (revokes every session), so two refreshes must never race:
@@ -83,7 +69,10 @@ async function request(path, { method = 'GET', body } = {}) {
     data = await readJson(res);
   }
   // Expired access token: get a new one with the refresh cookie and retry once.
-  if (res.status === 401 && refreshable(path) && (await refreshSession())) {
+  // Only for the backend's `code: 'session'` 401 (missing/expired access cookie):
+  // every other 401 is a real answer (wrong current password, expired passkey
+  // challenge, pre-auth 2FA stage...) and replaying it would repeat the attempt.
+  if (res.status === 401 && data?.code === 'session' && path !== '/auth/refresh' && (await refreshSession())) {
     res = await send(path, method, body, unsafe ? await getCsrfToken() : null);
     data = await readJson(res);
   }

@@ -91,6 +91,13 @@ ME=$(curl -s -b admin_cookies.txt "$BASE_URL/api/auth/me")
 [ "$(echo "$ME" | json_get user.role)" = "admin" ] || fail "expected admin role: $ME"
 pass "authenticated session confirms admin role"
 
+# The SPA refreshes and replays a request only on a 401 tagged code=session; a
+# wrong current password is a real answer and must not carry that tag.
+WRONG=$(curl -s -b admin_cookies.txt -H "Content-Type: application/json"   -d '{"currentPassword":"not-the-password","newPassword":"SmokeWrongPass123"}'   "$BASE_URL/api/auth/change-password")
+[ "$(echo "$WRONG" | json_get error)" = "Current password is incorrect" ] || fail "expected wrong-password 401: $WRONG"
+[ -z "$(echo "$WRONG" | json_get code)" ] || fail "wrong current password must not be tagged code=session: $WRONG"
+pass "wrong current password is a plain 401 (not a session-expired 401)"
+
 NEW_PASSWORD="SmokeTestPass123"
 cp admin_cookies.txt admin_other_device.txt
 curl -s -b admin_cookies.txt -c admin_cookies.txt -H "Content-Type: application/json" \
@@ -207,7 +214,9 @@ curl -s -b user_cookies.txt -c user_cookies.txt -X POST "$BASE_URL/api/auth/logo
   || fail "logout failed"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' -b user_cookies.txt "$BASE_URL/api/auth/me")
 [ "$STATUS" = "401" ] || fail "expected 401 after logout, got $STATUS"
-pass "logout invalidates the session"
+ME_AFTER=$(curl -s -b user_cookies.txt "$BASE_URL/api/auth/me")
+[ "$(echo "$ME_AFTER" | json_get code)" = "session" ] || fail "no-session 401 must be tagged code=session: $ME_AFTER"
+pass "logout invalidates the session (401 tagged code=session)"
 
 echo "--- per-account 2FA lockout ---"
 rm -f user_cookies.txt

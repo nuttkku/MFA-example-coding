@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { z } from 'zod';
 import { errorHandler } from '../src/middleware/error.middleware.js';
-import { NotFoundError } from '../src/utils/errors.js';
+import { NotFoundError, SessionExpiredError, UnauthorizedError } from '../src/utils/errors.js';
 import { logger } from '../src/utils/logger.js';
 
 function capture(err) {
@@ -31,6 +31,17 @@ test('CSRF rejections are tagged so the frontend can tell them from other 403s',
   const { status, body } = capture(Object.assign(new Error('x'), { code: 'EBADCSRFTOKEN' }));
   assert.equal(status, 403);
   assert.equal(body.code, 'csrf');
+});
+
+test('only an expired/missing access cookie is tagged as a session 401', () => {
+  // api.js refreshes the session and replays the request only for code 'session';
+  // a wrong current password must come back untagged so it is not retried.
+  const expired = capture(new SessionExpiredError('Session expired'));
+  assert.equal(expired.status, 401);
+  assert.equal(expired.body.code, 'session');
+  const wrongPassword = capture(new UnauthorizedError('Current password is incorrect'));
+  assert.equal(wrongPassword.status, 401);
+  assert.equal(wrongPassword.body.code, undefined);
 });
 
 test('validation errors are a 400 with details', () => {

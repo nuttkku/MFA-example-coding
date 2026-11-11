@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { env } from '../config/env.js';
 import { pool } from '../config/db.js';
-import { UnauthorizedError } from '../utils/errors.js';
+import { UnauthorizedError, SessionExpiredError } from '../utils/errors.js';
 
 export const COOKIE_NAMES = {
   preAuth: 'pre_auth_token',
@@ -142,16 +142,16 @@ export function issueAccessCookie(res, user) {
 
 export function verifyAccessCookie(req) {
   const token = req.cookies[COOKIE_NAMES.access];
-  if (!token) throw new UnauthorizedError('Not authenticated');
+  if (!token) throw new SessionExpiredError('Not authenticated');
 
   let payload;
   try {
     payload = jwt.verify(token, env.ACCESS_TOKEN_SECRET, { algorithms: [JWT_ALGORITHM] });
   } catch {
-    throw new UnauthorizedError('Session expired');
+    throw new SessionExpiredError('Session expired');
   }
 
-  if (payload.typ !== 'access') throw new UnauthorizedError('Not authenticated');
+  if (payload.typ !== 'access') throw new SessionExpiredError('Not authenticated');
   return payload;
 }
 
