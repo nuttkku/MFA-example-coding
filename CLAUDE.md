@@ -649,7 +649,7 @@ dismiss ใน GitHub Code scanning แล้ว) และ `log-injection` ท�
 | จุดที่เจอ | เครื่องมือ | การแก้ |
 |---|---|---|
 | `body-parser` 2.3.0 DoS (high, GHSA-27r3-jxmh-p828) ทำ `audit`/OSV/Trivy backend แดงทุก PR | `npm audit`, OSV, Trivy | `npm audit fix` → 2.4.0 |
-| `minimatch` 10.x (ผ่าน `nodemon`) DoS (moderate) — ไม่มี 10.x ที่แก้ | `npm audit`, OSV | `overrides: { nodemon: { minimatch: ^11.0.1 } }` (nodemon ใช้แค่ named export `minimatch` ที่ v11 ยังมี) ทดสอบแล้วว่าแก้ไฟล์แล้ว nodemon restart |
+| `minimatch` 10.x (ผ่าน `nodemon`) DoS (moderate) — ไม่มี 10.x ที่แก้ | `npm audit`, OSV | `overrides: { minimatch: ^11.0.1 }` ทั้ง backend และ frontend (nodemon และ eslint 10 ล็อก `^10` ไว้ แต่ใช้แค่ export `minimatch`/`Minimatch` ที่ v11 ยังมี) ทดสอบแล้วว่า nodemon restart ได้และ eslint ยังจับ error ได้ ใช้ override ทั้งแพ็กเกจได้หลังย้ายเป็น eslint 10 เพราะ eslint 9 ยังใช้ minimatch 3 ที่ API ต่างกัน |
 | `deepmerge` prototype poisoning (low) ผ่าน `@sveltejs/vite-plugin-svelte` — ยังไม่มีเวอร์ชันแก้ | OSV | `frontend/osv-scanner.toml` ignore พร้อมเหตุผล + `ignoreUntil` (ใช้แค่ merge config ของเราตอน build ไม่มี input ผู้ใช้ ไม่อยู่ใน bundle) |
 | `skills/*/reference/` 7 ไฟล์ล้าหลัง/ผิดตัว (`package.json` ของ skill frontend เป็นของ backend) | Gemini | manifest + `check-skill-references.sh` ใน CI |
 | Frontend ไม่เคยเรียก `/auth/refresh` | Gemini | ดูหัวข้อ Token/Cookie |
