@@ -18,7 +18,7 @@ export function errorHandler(err, req, res, next) {
   }
 
   if (err instanceof AppError) {
-    return res.status(err.statusCode).json({ error: err.message, details: err.details });
+    return res.status(err.statusCode).json({ error: err.message, details: err.details, code: err.code });
   }
 
   // Client errors raised by Express/body-parser itself (malformed JSON, body

@@ -273,11 +273,15 @@ session ใหม่ที่เพิ่งได้จากการเปล
 เดิมที่ออกไปแล้วยังใช้ได้จนหมดอายุ 15 นาที เพราะเป็น stateless JWT — ข้อจำกัดที่รู้อยู่แล้ว)
 
 **Frontend refresh เอง** (`api.js`): ได้ `401` → `POST /auth/refresh` หนึ่งครั้งแล้วยิง request เดิมซ้ำ — เดิมไม่มีเลย
-ผู้ใช้หลุดทุก 15 นาทีทั้งที่ refresh cookie อายุ 7 วัน (Gemini review ชี้) ยกเว้น path ที่ 401 คือคำตอบจริง (`NO_SESSION_REFRESH`:
-login, refresh, logout, ขั้น pre-auth 2FA, passkey login/2FA — replay พวกนี้อาจเผา state ใช้ครั้งเดียว) **refresh ห้ามแข่งกัน**: reuse
+ผู้ใช้หลุดทุก 15 นาทีทั้งที่ refresh cookie อายุ 7 วัน (Gemini review ชี้) **เฉพาะ 401 ที่มี `code: 'session'`** — คือ
+`SessionExpiredError` (`utils/errors.js`) ที่ `verifyAccessCookie`/`requireAuth` โยนเมื่อ access cookie ไม่มี/หมดอายุ/ผิดประเภท
+401 อื่นเป็นคำตอบจริง ห้าม refresh แล้วส่งซ้ำ (เช่น "Current password is incorrect" ของ change-password — รอบแรกใช้รายการ path
+ยกเว้นแล้วพลาดจุดนี้ ทำให้รหัสผิดถูกส่งสองครั้งและกินโควตา `loginLimiter` สองเท่า, challenge passkey หมดอายุ, ขั้น pre-auth) ใช้ code
+แทนรายการ path เพื่อไม่ต้องไล่ตามว่า controller ไหนโยน 401 เพิ่ม — **ถ้าเพิ่ม 401 ใหม่ที่หมายถึง "session หมด" ต้องใช้
+`SessionExpiredError`** ส่วน 401 ของ `/auth/refresh` เองห้ามติด code นี้ (refresh จะรอตัวเองจนค้าง) **refresh ห้ามแข่งกัน**: reuse
 detection ข้างบนจะมอง refresh สองตัวที่ใช้ token เดียวกันเป็นการขโมยแล้ว revoke ทุก session จึงรวม refresh ในแท็บเดียวเป็น promise เดียว
-และใช้ `navigator.locks` ข้ามแท็บ (แท็บที่ได้ lock ทีหลังส่ง cookie ตัวใหม่ที่ rotate แล้ว) เช็ค prefix ด้วย `startsWith` ไม่ใช่ regex
-(Semgrep `regex_dos` บล็อก — แนวเดียวกับรอบ 5) UI test ลบ cookie `access_token` แล้วต้องยังอยู่หน้า profile
+และใช้ `navigator.locks` ข้ามแท็บ (แท็บที่ได้ lock ทีหลังส่ง cookie ตัวใหม่ที่ rotate แล้ว) UI test ลบ cookie `access_token` แล้วต้องยังอยู่
+หน้า profile และใส่รหัสเดิมผิดต้องเห็น request `change-password` ครั้งเดียวไม่มี refresh smoke test เช็คว่า 401 ไหนมี/ไม่มี tag
 `issueRefreshCookie` ลบแถว `refresh_tokens` ที่หมดอายุของ user นั้นทุกครั้งที่ออกตัวใหม่ (แถวที่ rotate แล้วแต่ยังไม่หมดอายุต้องเก็บไว้ให้ reuse detection)
 
 ## ทำไม hash บางอย่าง แต่เข้ารหัส (encrypt) บางอย่าง
@@ -461,7 +465,7 @@ setup บังคับเหมือนบัญชีอื่นทุก�
   ในตัวอย่างเพื่อการเรียนรู้
 - Rate limiter ใช้ in-memory store เป็นค่าเริ่มต้น (พอสำหรับ instance เดียว) — ถ้าตั้ง `REDIS_URL` จะใช้ Redis ร่วมกันผ่าน
   `rate-limit-redis` (`config/redis.js` + `docker-compose.redis.yml`) แต่ละ limiter มี prefix ของตัวเอง (`rl:login:` ฯลฯ)
-  ใช้ `rate-limit-redis@4` เพราะ v5+ บังคับ `express-rate-limit` v8 (major upgrade แยกเรื่อง) Redis ล่มตอน request → route ที่มี limiter
+  ใช้ `rate-limit-redis@6` คู่กับ `express-rate-limit` v8 (ทดสอบ smoke test ผ่าน `docker-compose.redis.yml` แล้ว counter ของทุก limiter อยู่ใน Redis — CI ไม่ได้รันแบบมี Redis) Redis ล่มตอน request → route ที่มี limiter
   ตอบ 500 (ตั้งใจไม่ fail-open) เชื่อมต่อด้วย top-level await ตอน import เพราะ store โหลด Lua script ทันทีที่สร้าง
 - **Account lockout ไม่ครอบคลุม SSO login** (ดูเหตุผลเต็มในหัวข้อ SSO ด้านบน) — ตั้งใจ ไม่ใช่ช่องโหว่ที่ลืมปิด (เช่นเดียวกับ passkey login)
 - **ไม่มีบัญชีแบบ passkey อย่างเดียว** — ต้องตั้ง TOTP ก่อนลงทะเบียน passkey ได้ เพื่อให้มีทางกู้บัญชีเสมอ และยังไม่ทำ

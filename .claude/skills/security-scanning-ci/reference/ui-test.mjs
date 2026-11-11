@@ -136,6 +136,26 @@ const renewed = (await page.context().cookies()).map((c) => c.name);
 if (!renewed.includes('access_token')) await fail('refresh did not issue a new access_token cookie');
 pass('new access_token cookie issued');
 
+// A wrong current password is also a 401, but a real answer: it must not trigger
+// a refresh nor be replayed (that would double-count it against loginLimiter).
+const seen = [];
+const track = (req) => {
+  if (/\/api\/auth\/(refresh|change-password)$/.test(req.url())) seen.push(new URL(req.url()).pathname);
+};
+page.on('request', track);
+await page.click('a[href="#/change-password"]');
+await expectRoute('#/change-password', 'change-password page');
+await page.fill('#current', 'not-the-current-password');
+await page.fill('#new', ADMIN_NEW_PASSWORD);
+await page.fill('#confirm', ADMIN_NEW_PASSWORD);
+await page.click('button[type=submit]');
+await check(page.waitForSelector('.alert-error:has-text("incorrect")'), 'wrong current password is rejected');
+page.off('request', track);
+if (seen.join() !== '/api/auth/change-password') {
+  await fail(`wrong current password should be sent once with no refresh, saw: ${seen.join(', ')}`);
+}
+pass('wrong current password is not refreshed and replayed');
+
 console.log('--- admin: user management ---');
 await page.click('a[href="#/admin/users"]');
 await expectRoute('#/admin/users', 'navbar link to users page');
