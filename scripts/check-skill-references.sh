@@ -17,6 +17,7 @@ listed=$(mktemp)
 trap 'rm -f "$listed"' EXIT
 
 while read -r ref src; do
+  src=${src%$'\r'} # Windows checkouts (core.autocrlf) give the manifest CRLF endings
   case "$ref" in '' | '#'*) continue ;; esac
   echo "$ref" >>"$listed"
   if [ ! -f "$src" ]; then
