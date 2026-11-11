@@ -160,6 +160,12 @@ export function verifyAccessCookie(req) {
 // token that was already rotated away is ever presented again, that is a strong
 // signal of theft, so we revoke the entire session family for that user.
 export async function issueRefreshCookie(res, userId, { ipAddress, userAgent } = {}) {
+  // Expired rows can never be used again (the JWT's own exp fails first), so
+  // prune this user's whenever a new one is issued (login or rotation) instead
+  // of letting the table grow forever.
+  // Rotated-but-unexpired rows stay: reuse detection needs them.
+  await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1 AND expires_at < now()', [userId]);
+
   const jti = crypto.randomUUID();
   const { token, maxAge } = signWithMaxAge(
     { sub: userId, jti, typ: 'refresh' },
